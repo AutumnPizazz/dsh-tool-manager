@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-	id: "dsh-tool-manager",
+	id: "@autumnpizazz/dsh-tool-manager",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;

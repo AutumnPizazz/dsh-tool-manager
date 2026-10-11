@@ -3,6 +3,14 @@
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.2.12] - 2026-10-12
+
+### Fixed
+
+- **客户端模块 id 与包名不一致**：`1.2.11` 的发布物里 `dist/client.js` 仍是 `id: "dsh-tool-manager"`，
+  而包名已改为 `@autumnpizazz/dsh-tool-manager`；dsh 按包名挂载客户端模块，id 不匹配会导致设置页模块加载不到。
+  现在 `scripts/copy-client.mjs` 在构建时按 `package.json` 的 `name` 覆写该 id（`src/client.js` 也已同步）。
+
 ## [1.2.11] - 2026-10-12
 
 ### Changed
