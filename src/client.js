@@ -22,8 +22,8 @@ window.__ModuleLoader__.load({
 			".tm_stats{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:8px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.13))}.tm_stat{min-width:0;padding:9px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.07));border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.15))}.tm_stat_value{font-size:18px;font-weight:700;line-height:1.2}.tm_stat_label{margin-top:3px;font-size:11px;color:var(--dsw-alias-label-secondary,#9097a4)}@media(max-width:720px){.tm_stats{grid-template-columns:repeat(2,minmax(100px,1fr))}}",
 			".tm_badge{display:inline-block;margin-left:6px;padding:2px 7px;border:1px solid transparent;border-radius:999px;font-size:10px;font-weight:700;line-height:1.35;letter-spacing:.02em;vertical-align:middle;color:#fff}.tm_badge.off{background:#b42318;border-color:#d92d20;color:#fff}.tm_badge.cold{background:#4338ca;border-color:#6366f1;color:#fff}.tm_badge.live{background:#15803d;border-color:#22c55e;color:#fff}",
 			".tm_group{border-bottom:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.13))}.tm_group:last-child{border-bottom:0}",
-			".tm_group_bar{position:relative;display:flex;align-items:center;gap:8px;padding:11px 14px 11px 26px}",
-			".tm_caret{display:inline-block;width:13px;margin-right:2px;color:var(--dsw-alias-label-secondary,#9097a4);font-size:10px;line-height:1;vertical-align:middle}" + ".tm_drag{opacity:0;transition:opacity .15s ease}" + ".tm_group_bar:hover .tm_drag,.tm_member:hover .tm_drag,.tm_group_bar .tm_drag:active,.tm_member .tm_drag:active{opacity:1}",
+			".tm_group_bar{position:relative;display:flex;align-items:center;gap:8px;padding:11px 14px;cursor:grab}",
+			".tm_caret{display:inline-block;width:13px;margin-right:2px;color:var(--dsw-alias-label-secondary,#9097a4);font-size:10px;line-height:1;vertical-align:middle}", ".tm_group_bar:active,.tm_member:active{cursor:grabbing}",
 			".tm_group_main{appearance:none;border:0;background:transparent;color:inherit;text-align:left;flex:1;min-width:0;cursor:pointer;padding:0}",
 			".tm_group_title{font-size:13px;font-weight:600;line-height:1.3}.tm_group_sub{font-size:11px;color:var(--dsw-alias-label-secondary,#9097a4);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 			".tm_group_count{flex:0 0 auto;font-size:12px;color:var(--dsw-alias-label-secondary,#9097a4)}",
@@ -37,11 +37,9 @@ window.__ModuleLoader__.load({
 			".tm_modal_foot{padding:12px 16px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));flex:0 0 auto}.tm_confirm_card{width:min(460px,100%)}.tm_timeout_field{display:flex;align-items:center;gap:8px}.tm_timeout_field .tm_input{max-width:120px;flex:0 0 120px}.tm_preview_body{padding-right:10px}.tm_preview_panel{flex:0 0 auto;overflow:visible}.tm_preview_meta{min-width:0;flex:1}.tm_preview_desc{margin-top:4px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;color:var(--dsw-alias-label-secondary,#9097a4);font-size:12px;line-height:1.55}",
 			".tm_picker{min-height:180px;max-height:min(46vh,420px);overflow:auto;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));border-radius:8px;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.06))}",
 			".tm_pick{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.1))}.tm_pick:last-child{border-bottom:0}",
-			".tm_drag{flex:0 0 auto;cursor:grab;color:var(--dsw-alias-label-secondary,#9097a4);font-size:12px;line-height:1;letter-spacing:-1px;padding:2px 2px;user-select:none}",
-			".tm_drag:active{cursor:grabbing}",
-			".tm_switch{flex:0 0 auto;display:inline-flex;align-items:center;cursor:pointer}",
+									".tm_switch{flex:0 0 auto;display:inline-flex;align-items:center;cursor:pointer}",
 			".tm_switch input{margin:0;cursor:pointer}",
-			".tm_member{position:relative;display:flex;gap:8px;align-items:flex-start;padding-left:18px}",
+			".tm_member{position:relative;display:flex;gap:8px;align-items:flex-start}", ".tm_member[draggable=\"true\"],.tm_group_bar{cursor:grab}",
 			".tm_group_off .tm_group_title{color:var(--dsw-alias-label-secondary,#9097a4)}",
 			".tm_drop_before{box-shadow:inset 0 2px 0 0 var(--dsw-alias-brand-primary,#4d6bfe)}",
 			".tm_drop_after{box-shadow:inset 0 -2px 0 0 var(--dsw-alias-brand-primary,#4d6bfe)}",
@@ -707,17 +705,16 @@ window.__ModuleLoader__.load({
 						setDrag(null); setDropHint(null);
 					},
 				},
-					h("div", { className: "tm_group_bar" },
-						h("span", {
-							className: "tm_drag",
-							title: "拖拽调整分组顺序",
+					h("div", {
+							className: "tm_group_bar",
+							title: "拖动整行可调整分组顺序",
 							draggable: true,
 							onDragStart: (event) => {
 								try { event.dataTransfer.setData("text/plain", key); event.dataTransfer.effectAllowed = "move"; } catch (e) { /* 忽略 */ }
 								setDrag({ kind: "group", key: key });
 							},
 							onDragEnd: () => { setDrag(null); setDropHint(null); },
-						}, "⋮⋮"),
+						},
 						h("label", { className: "tm_switch", title: off ? "整组启用" : "整组弃用" },
 							h("input", { type: "checkbox", checked: !off, disabled: members.length === 0, onChange: () => toggleGroup(group) }),
 						),
@@ -737,6 +734,13 @@ window.__ModuleLoader__.load({
 								return h("div", {
 									className: "tm_member" + (memberHint ? " tm_drop_" + memberHint : ""),
 									key: tool.name,
+									draggable: true,
+									title: "拖动整行可调整组内顺序",
+									onDragStart: (event) => {
+										try { event.dataTransfer.setData("text/plain", tool.name); event.dataTransfer.effectAllowed = "move"; } catch (e) { /* 忽略 */ }
+										setDrag({ kind: "member", groupKey: key, name: tool.name });
+									},
+									onDragEnd: () => { setDrag(null); setDropHint(null); },
 									onDragOver: (event) => {
 										if (!drag || drag.kind !== "member" || drag.groupKey !== key || drag.name === tool.name) return;
 										event.preventDefault();
@@ -751,17 +755,7 @@ window.__ModuleLoader__.load({
 										setDrag(null); setDropHint(null);
 									},
 								},
-									h("span", {
-										className: "tm_drag",
-										title: "拖拽调整组内顺序",
-										draggable: true,
-										onDragStart: (event) => {
-											try { event.dataTransfer.setData("text/plain", tool.name); event.dataTransfer.effectAllowed = "move"; } catch (e) { /* 忽略 */ }
-											setDrag({ kind: "member", groupKey: key, name: tool.name });
-										},
-										onDragEnd: () => { setDrag(null); setDropHint(null); },
-									}, "⋮⋮"),
-									h("div", { className: "tm_tool_name" }, tool.name, disabled.has(tool.name) ? h("span", { className: "tm_badge off" }, "已弃用") : null),
+																		h("div", { className: "tm_tool_name" }, tool.name, disabled.has(tool.name) ? h("span", { className: "tm_badge off" }, "已弃用") : null),
 									h("div", { className: "tm_tool_desc", title: tool.description }, tool.description),
 								);
 							}),
@@ -1057,7 +1051,7 @@ window.__ModuleLoader__.load({
 						h("div", null,
 							h("b", null, "工具目录"),
 							h("div", { className: "tm_muted" }, "弃用后立刻对模型隐藏（从下一个模型步骤生效）。"),
-							h("div", { className: "tm_muted" }, "分组开关会把整组工具一起启用或弃用（不用逐个勾选）；鼠标移到行首的 ⋮⋮ 拖动，可以调整分组顺序和组内工具顺序，保存后生效。"),
+							h("div", { className: "tm_muted" }, "分组开关会把整组工具一起启用或弃用（不用逐个勾选）；直接拖动整行即可调整分组顺序和组内工具顺序，保存后生效。"),
 						),
 						h("div", { className: "tm_row" },
 							h("button", { className: "tm_btn", onClick: startAutoGroup, disabled: autoGrouping || autoGroupCandidates.length === 0, title: autoGroupCandidates.length ? "用默认模型对未分组且已启用的工具进行聚类" : "没有可自动分组的工具" }, autoGrouping ? "自动分组中…" : "自动分组"),
