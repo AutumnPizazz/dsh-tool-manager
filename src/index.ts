@@ -570,7 +570,7 @@ export async function assertNoEmptyGroups(
     if (issues.disabledMembers.length > 0) {
       const issue = issues.disabledMembers[0]!;
       throw new Error(
-        `Preset ${JSON.stringify(presetId)} has disabled tool ${JSON.stringify(issue.tool)} in group ${JSON.stringify(issue.groups[0])}. Disabled tools cannot belong to on-demand groups.`,
+        `Preset ${JSON.stringify(presetId)} has disabled tool ${JSON.stringify(issue.tool)} in group ${JSON.stringify(issue.groups[0])}. A group must be either fully enabled or fully disabled.`,
       );
     }
     if (issues.duplicateMembers.length > 0) {

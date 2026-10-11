@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- 分组支持整组开关：分组行左侧新增开关，打开＝组内工具一起启用，关闭＝组内工具一起关闭，不需要再逐个勾选成员。
+- 分组与组内工具都支持拖拽排序：拖动分组行或成员行左侧的 `⋮⋮` 调整顺序，组内顺序写入该组的 `patterns`，保存后按此顺序展示。
+- 记住上次选择的 Agent Preset：存在浏览器 `localStorage` 的 `dsh-tool-manager.active-preset`，再次打开设置页时优先回到该 Preset（该 Preset 不存在时回落到默认 Preset）。
+
+### Changed
+
+- 保存校验的「已关闭工具不能入组」规则改为「整组启用或整组关闭」：组内工具全部被关闭时，该组是合法的整体关闭状态，不再报 `has disabled tool ... in group ...`，也不再把这类组算作空组；只有匹配不到任何工具的组仍按空组报错。抛错文案同步改为 `A group must be either fully enabled or fully disabled.`
+
 ## [1.2.10] - 2026-10-08
 
 ### Fixed

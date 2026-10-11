@@ -106,10 +106,17 @@ export function groupPolicyIssues(
   const emptyGroups: string[] = [];
   const disabledMembers: GroupConflict[] = [];
   for (const group of resolveGroups(policy, toolNames)) {
+    if (group.tools.length === 0) {
+      emptyGroups.push(group.name);
+      continue;
+    }
     const enabled = group.tools.filter((name) => !disabled.has(name));
-    if (enabled.length === 0) emptyGroups.push(group.name);
+    // A group whose tools are all disabled is a legal whole-group off switch
+    // (the settings page toggles it in one click); only a group that matches
+    // no tool at all stays invalid configuration.
+    const wholeGroupOff = enabled.length === 0;
     for (const name of group.tools) {
-      if (disabled.has(name)) disabledMembers.push({ tool: name, groups: [group.name] });
+      if (disabled.has(name) && !wholeGroupOff) disabledMembers.push({ tool: name, groups: [group.name] });
       const groups = owners.get(name) ?? [];
       groups.push(group.name);
       owners.set(name, groups);

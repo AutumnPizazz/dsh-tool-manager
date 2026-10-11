@@ -49,8 +49,8 @@ describe("tool-manager save validation", () => {
     );
   });
 
-  it("rejects groups containing disabled tools", async () => {
-    const schemas = { standard: ["read"] };
+  it("rejects a group that mixes enabled and disabled tools", async () => {
+    const schemas = { standard: ["read", "web_search"] };
     const presets = presetService([{ id: "standard", trust: "system", isDefault: true }], schemas);
     const tools = toolService(schemas);
     await assert.rejects(
@@ -58,11 +58,27 @@ describe("tool-manager save validation", () => {
         presets: {
           standard: {
             disabled: ["read"],
-            groups: [{ name: "Disabled", patterns: ["read"] }],
+            groups: [{ name: "Disabled", patterns: ["read", "web_search"] }],
           },
         },
       }),
       /disabled tool "read" in group "Disabled"/,
+    );
+  });
+
+  it("accepts a group whose tools are all disabled (whole-group off switch)", async () => {
+    const schemas = { standard: ["read"] };
+    await assertNoEmptyGroups(
+      presetService([{ id: "standard", trust: "system", isDefault: true }], schemas),
+      toolService(schemas),
+      {
+        presets: {
+          standard: {
+            disabled: ["read"],
+            groups: [{ name: "Disabled", patterns: ["read"] }],
+          },
+        },
+      },
     );
   });
 
@@ -191,7 +207,7 @@ describe("tool-manager save validation", () => {
         presets: {
           standard: {
             disabled: ["schedule_create"],
-            groups: [{ name: "A", patterns: ["schedule_create"] }],
+            groups: [{ name: "A", patterns: ["schedule_create", "schedule_list"] }],
           },
         },
       }, undefined, merged),

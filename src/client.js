@@ -37,6 +37,14 @@ window.__ModuleLoader__.load({
 			".tm_modal_foot{padding:12px 16px 16px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));flex:0 0 auto}.tm_confirm_card{width:min(460px,100%)}.tm_timeout_field{display:flex;align-items:center;gap:8px}.tm_timeout_field .tm_input{max-width:120px;flex:0 0 120px}.tm_preview_body{padding-right:10px}.tm_preview_panel{flex:0 0 auto;overflow:visible}.tm_preview_meta{min-width:0;flex:1}.tm_preview_desc{margin-top:4px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;color:var(--dsw-alias-label-secondary,#9097a4);font-size:12px;line-height:1.55}",
 			".tm_picker{min-height:180px;max-height:min(46vh,420px);overflow:auto;border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.18));border-radius:8px;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.06))}",
 			".tm_pick{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.1))}.tm_pick:last-child{border-bottom:0}",
+			".tm_drag{flex:0 0 auto;cursor:grab;color:var(--dsw-alias-label-secondary,#9097a4);font-size:12px;line-height:1;letter-spacing:-1px;padding:2px 2px;user-select:none}",
+			".tm_drag:active{cursor:grabbing}",
+			".tm_switch{flex:0 0 auto;display:inline-flex;align-items:center;cursor:pointer}",
+			".tm_switch input{margin:0;cursor:pointer}",
+			".tm_member{display:flex;gap:8px;align-items:flex-start}",
+			".tm_group_off .tm_group_title{color:var(--dsw-alias-label-secondary,#9097a4)}",
+			".tm_drop_before{box-shadow:inset 0 2px 0 0 var(--dsw-alias-brand-primary,#4d6bfe)}",
+			".tm_drop_after{box-shadow:inset 0 -2px 0 0 var(--dsw-alias-brand-primary,#4d6bfe)}",
 		].join("");
 
 		function installCss() {
@@ -100,6 +108,52 @@ window.__ModuleLoader__.load({
 		function matchingTools(tools, patterns) {
 			return (tools || []).filter((tool) => (patterns || []).some((pattern) => matchesPattern(tool.name, pattern)));
 		}
+
+		function orderByPatterns(tools, patterns) {
+			const rank = new Map();
+			for (const [index, pattern] of (patterns || []).entries()) {
+				for (const tool of tools) {
+					if (!rank.has(tool.name) && matchesPattern(tool.name, pattern)) rank.set(tool.name, index);
+				}
+			}
+			return [...tools].sort((a, b) => (rank.get(a.name) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.name) ?? Number.MAX_SAFE_INTEGER));
+		}
+
+		function orderedMembers(tools, patterns) {
+			return orderByPatterns(matchingTools(tools, patterns), patterns);
+		}
+
+		function groupMembersOf(preset, group) {
+			return matchingTools(preset.tools || [], group.patterns || []);
+		}
+
+		function groupIsOff(preset, group, disabled) {
+			const members = groupMembersOf(preset, group);
+			return members.length > 0 && members.every((tool) => disabled.has(tool.name));
+		}
+
+		function dropPosition(event, element) {
+			const rect = element.getBoundingClientRect();
+			return event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+		}
+
+		const ACTIVE_PRESET_KEY = "dsh-tool-manager.active-preset";
+
+		function readActivePreset() {
+			try {
+				return window.localStorage.getItem(ACTIVE_PRESET_KEY) || "";
+			} catch (e) {
+				return "";
+			}
+		}
+
+		function writeActivePreset(id) {
+			try {
+				if (id) window.localStorage.setItem(ACTIVE_PRESET_KEY, id);
+			} catch (e) {
+				// 隐私模式等场景下写入失败时忽略即可
+			}
+		}
 		function groupedNames(preset, exceptKey) {
 			const names = new Set();
 			for (const group of preset.policy.groups || []) {
@@ -117,19 +171,22 @@ window.__ModuleLoader__.load({
 			const disabled = new Set(preset.policy.disabled || []);
 			const owners = new Map();
 			const empty = [];
-			const disabledMembers = [];
+			const partial = [];
 			for (const group of preset.policy.groups || []) {
+				const name = group.name || "未命名分组";
 				const members = matchingTools(preset.tools, group.patterns);
-				if (!members.some((tool) => !disabled.has(tool.name))) empty.push(group.name || "未命名分组");
+				if (members.length === 0) { empty.push(name); continue; }
+				// 整组关闭是合法状态：组内工具全部被关闭时，只是把这一组整体关掉了。
+				const wholeGroupOff = !members.some((tool) => !disabled.has(tool.name));
 				for (const tool of members) {
-					if (disabled.has(tool.name)) disabledMembers.push({ tool: tool.name, group: group.name || "未命名分组" });
+					if (disabled.has(tool.name) && !wholeGroupOff) partial.push({ tool: tool.name, group: name });
 					const groups = owners.get(tool.name) || [];
-					groups.push(group.name || "未命名分组");
+					groups.push(name);
 					owners.set(tool.name, groups);
 				}
 			}
 			const duplicates = [...owners].filter(([, groups]) => groups.length > 1);
-			return { empty, disabledMembers, duplicates };
+			return { empty, partial, duplicates };
 		}
 		function catalogStats(preset) {
 			const disabled = new Set(preset.policy.disabled || []);
@@ -211,13 +268,21 @@ window.__ModuleLoader__.load({
 			const [aiConfirm, setAiConfirm] = react.useState(null);
 			const [suggestionTimeoutSeconds, setSuggestionTimeoutSeconds] = react.useState("60");
 			const [autoGroupTimeoutSeconds, setAutoGroupTimeoutSeconds] = react.useState("120");
+			const [drag, setDrag] = react.useState(null);
+			const [dropHint, setDropHint] = react.useState(null);
 
 			const load = react.useCallback(() => {
 				setBusy(true); setError("");
 				return api("/snapshot").then((value) => {
 					const next = withGroupKeys(value);
 					setSnapshot(value); setDraft(next); setModal(null); setAutoPreview(null); setAutoGroupError("");
-					setActive((current) => current && value.presets.some((p) => p.id === current) ? current : (value.presets[0] && value.presets[0].id) || "");
+					setActive((current) => {
+						if (current && value.presets.some((p) => p.id === current)) return current;
+						const remembered = readActivePreset();
+						if (remembered && value.presets.some((p) => p.id === remembered)) return remembered;
+						const fallback = value.presets.find((p) => p.isDefault) || value.presets[0];
+						return (fallback && fallback.id) || "";
+					});
 				}).catch((e) => setError(String(e.message || e))).finally(() => setBusy(false));
 			}, []);
 			react.useEffect(() => { load(); }, [load]);
@@ -231,6 +296,9 @@ window.__ModuleLoader__.load({
 				window.addEventListener("beforeunload", onBeforeUnload);
 				return () => window.removeEventListener("beforeunload", onBeforeUnload);
 			}, [dirty]);
+			react.useEffect(() => {
+				if (active) writeActivePreset(active);
+			}, [active]);
 			react.useEffect(() => {
 				if (!modal && !aiConfirm && !autoPreview) return undefined;
 				function onKeyDown(event) {
@@ -261,8 +329,54 @@ window.__ModuleLoader__.load({
 			function toggleTool(name) {
 				mutatePreset((target) => {
 					const disabled = new Set(target.policy.disabled || []);
-					if (disabled.has(name)) disabled.delete(name); else disabled.add(name);
+					const turningOff = !disabled.has(name);
+					const group = (target.policy.groups || []).find((item) => matchingTools(target.tools || [], item.patterns || []).some((tool) => tool.name === name));
+					const names = group ? matchingTools(target.tools || [], group.patterns || []).map((tool) => tool.name) : [name];
+					for (const item of names) {
+						if (turningOff) disabled.add(item); else disabled.delete(item);
+					}
 					target.policy.disabled = [...disabled];
+				});
+			}
+
+			function toggleGroup(group) {
+				const members = groupMembersOf(preset, group);
+				if (members.length === 0) return;
+				mutatePreset((target) => {
+					const disabled = new Set(target.policy.disabled || []);
+					const off = members.every((tool) => disabled.has(tool.name));
+					for (const tool of members) {
+						if (off) disabled.delete(tool.name); else disabled.add(tool.name);
+					}
+					target.policy.disabled = [...disabled];
+				});
+			}
+
+			function moveGroup(fromKey, toKey, position) {
+				mutatePreset((target) => {
+					const groups = target.policy.groups || [];
+					const from = groups.findIndex((group) => group._key === fromKey);
+					if (from < 0) return;
+					const moved = groups.splice(from, 1)[0];
+					const to = groups.findIndex((group) => group._key === toKey);
+					if (to < 0) { groups.splice(from, 0, moved); return; }
+					groups.splice(position === "after" ? to + 1 : to, 0, moved);
+					target.policy.groups = groups;
+				});
+			}
+
+			function moveMember(groupKey, fromName, toName, position) {
+				mutatePreset((target) => {
+					const group = (target.policy.groups || []).find((item) => item._key === groupKey);
+					if (!group) return;
+					const names = orderByPatterns(matchingTools(target.tools || [], group.patterns || []), group.patterns || []).map((tool) => tool.name);
+					const from = names.indexOf(fromName);
+					if (from < 0) return;
+					names.splice(from, 1);
+					const to = names.indexOf(toName);
+					if (to < 0) return;
+					names.splice(position === "after" ? to + 1 : to, 0, fromName);
+					group.patterns = names;
 				});
 			}
 
@@ -280,7 +394,7 @@ window.__ModuleLoader__.load({
 			}
 
 			function openEdit(group) {
-				const members = matchingTools(preset.tools, group.patterns || []).map((tool) => tool.name);
+				const members = orderedMembers(preset.tools, group.patterns || []).map((tool) => tool.name);
 				setModal({
 					mode: "edit",
 					key: group._key,
@@ -483,9 +597,9 @@ window.__ModuleLoader__.load({
 				for (const item of draft.presets || []) {
 					if (item.broken) continue;
 					const issues = groupDraftIssues(item);
-					if (issues.disabledMembers.length) {
-						const issue = issues.disabledMembers[0];
-						setError("Preset “" + item.id + "”中的已关闭工具“" + issue.tool + "”不能加入分组“" + issue.group + "”。请从分组移除或重新开启该工具。");
+					if (issues.partial.length) {
+						const issue = issues.partial[0];
+						setError("Preset “" + item.id + "”中的分组“" + issue.group + "”里有部分工具已关闭（例如“" + issue.tool + "”）。分组只能整体启用或整体关闭，请用分组开关切换后再保存。");
 						setMessage("");
 						return;
 					}
@@ -496,7 +610,7 @@ window.__ModuleLoader__.load({
 						return;
 					}
 					if (issues.empty.length) {
-						setError("Preset “" + item.id + "”中的分组“" + issues.empty[0] + "”没有可用工具。请为它选择至少一个工具，或删除该分组后再保存。");
+						setError("Preset “" + item.id + "”中的分组“" + issues.empty[0] + "”没有匹配到任何工具。请编辑分组或删除后再保存。");
 						setMessage("");
 						return;
 					}
@@ -570,13 +684,43 @@ window.__ModuleLoader__.load({
 			function renderGroup(group) {
 				const key = group._key;
 				const open = !!expanded[key];
-				const members = matchingTools(preset.tools, group.patterns);
+				const members = orderedMembers(preset.tools, group.patterns);
+				const off = groupIsOff(preset, group, disabled);
 				const title = (group.name || "").trim() || "未命名分组";
-				return h("div", { className: "tm_group", key: key },
+				const hint = dropHint && dropHint.kind === "group" && dropHint.key === key ? dropHint.position : "";
+				return h("div", {
+					className: "tm_group" + (off ? " tm_group_off" : "") + (hint ? " tm_drop_" + hint : ""),
+					key: key,
+					onDragOver: (event) => {
+						if (!drag || drag.kind !== "group" || drag.key === key) return;
+						event.preventDefault();
+						if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+						setDropHint({ kind: "group", key: key, position: dropPosition(event, event.currentTarget) });
+					},
+					onDrop: (event) => {
+						if (!drag || drag.kind !== "group" || drag.key === key) return;
+						event.preventDefault();
+						moveGroup(drag.key, key, hint || "before");
+						setDrag(null); setDropHint(null);
+					},
+				},
 					h("div", { className: "tm_group_bar" },
+						h("span", {
+							className: "tm_drag",
+							title: "拖拽调整分组顺序",
+							draggable: true,
+							onDragStart: (event) => {
+								try { event.dataTransfer.setData("text/plain", key); event.dataTransfer.effectAllowed = "move"; } catch (e) { /* 忽略 */ }
+								setDrag({ kind: "group", key: key });
+							},
+							onDragEnd: () => { setDrag(null); setDropHint(null); },
+						}, "⋮⋮"),
+						h("label", { className: "tm_switch", title: off ? "整组启用" : "整组关闭" },
+							h("input", { type: "checkbox", checked: !off, disabled: members.length === 0, onChange: () => toggleGroup(group) }),
+						),
 						h("button", { className: "tm_chevron", title: open ? "收起" : "展开", onClick: () => setExpanded((current) => ({ ...current, [key]: !current[key] })) }, open ? "▾" : "▸"),
 						h("button", { className: "tm_group_main", onClick: () => setExpanded((current) => ({ ...current, [key]: !current[key] })) },
-							h("div", { className: "tm_group_title" }, title, h("span", { className: "tm_badge cold" }, "按需")),
+							h("div", { className: "tm_group_title" }, title, off ? h("span", { className: "tm_badge off" }, "整组关闭") : h("span", { className: "tm_badge cold" }, "按需")),
 							h("div", { className: "tm_group_sub" }, group.description || "没有描述"),
 						),
 						h("span", { className: "tm_group_count" }, members.length + " 个工具"),
@@ -584,10 +728,42 @@ window.__ModuleLoader__.load({
 						h("button", { className: "tm_btn", onClick: () => deleteGroup(key) }, "删除"),
 					),
 					open ? h("div", { className: "tm_group_body" }, members.length
-						? members.map((tool) => h("div", { className: "tm_member", key: tool.name },
-							h("div", { className: "tm_tool_name" }, tool.name, disabled.has(tool.name) ? h("span", { className: "tm_badge off" }, "关闭") : null),
-							h("div", { className: "tm_tool_desc", title: tool.description }, tool.description),
-						))
+						? [
+							off ? h("div", { className: "tm_muted", style: { padding: "6px 0" } }, "整组已关闭：这些工具对模型隐藏，打开左侧开关即可整体启用。") : null,
+							...members.map((tool) => {
+								const memberHint = dropHint && dropHint.kind === "member" && dropHint.groupKey === key && dropHint.name === tool.name ? dropHint.position : "";
+								return h("div", {
+									className: "tm_member" + (memberHint ? " tm_drop_" + memberHint : ""),
+									key: tool.name,
+									onDragOver: (event) => {
+										if (!drag || drag.kind !== "member" || drag.groupKey !== key || drag.name === tool.name) return;
+										event.preventDefault();
+										if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+										setDropHint({ kind: "member", groupKey: key, name: tool.name, position: dropPosition(event, event.currentTarget) });
+									},
+									onDrop: (event) => {
+										if (!drag || drag.kind !== "member" || drag.groupKey !== key || drag.name === tool.name) return;
+										event.preventDefault();
+										const position = dropHint && dropHint.name === tool.name ? dropHint.position : "before";
+										moveMember(key, drag.name, tool.name, position);
+										setDrag(null); setDropHint(null);
+									},
+								},
+									h("span", {
+										className: "tm_drag",
+										title: "拖拽调整组内顺序",
+										draggable: true,
+										onDragStart: (event) => {
+											try { event.dataTransfer.setData("text/plain", tool.name); event.dataTransfer.effectAllowed = "move"; } catch (e) { /* 忽略 */ }
+											setDrag({ kind: "member", groupKey: key, name: tool.name });
+										},
+										onDragEnd: () => { setDrag(null); setDropHint(null); },
+									}, "⋮⋮"),
+									h("div", { className: "tm_tool_name" }, tool.name, disabled.has(tool.name) ? h("span", { className: "tm_badge off" }, "关闭") : null),
+									h("div", { className: "tm_tool_desc", title: tool.description }, tool.description),
+								);
+							}),
+						]
 						: h("div", { className: "tm_error" }, "无效空组：请编辑并选择至少一个可用工具，或删除该组。"),
 					) : null,
 				);
@@ -879,6 +1055,7 @@ window.__ModuleLoader__.load({
 						h("div", null,
 							h("b", null, "工具目录"),
 							h("div", { className: "tm_muted" }, "关掉后立刻对模型隐藏。按需组默认隐藏，模型要先调用 tool_list 打开所在组才能使用。"),
+							h("div", { className: "tm_muted" }, "分组开关会把整组工具一起启用或关闭（不用逐个勾选）；拖动 ⋮⋮ 可以调整分组顺序和组内工具顺序，保存后生效。"),
 							h("div", { className: "tm_muted" }, "tool_list 只在当前 Preset 有有效按需组时才出现（保存后从下一个模型步骤生效），没有有效按需组时模型看不到它；它由插件自动管理，不出现在本页工具目录中，也不能在这里开关或分组。"),
 						),
 						h("div", { className: "tm_row" },

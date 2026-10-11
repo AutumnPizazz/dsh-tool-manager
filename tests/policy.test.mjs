@@ -165,13 +165,35 @@ describe("tool-manager policy", () => {
       { name: "Web", tools: ["web_search"] },
     ]);
     assert.deepEqual(groupPolicyIssues(policy, ["web_search", "web_fetch"]), {
-      emptyGroups: ["Fetch"],
-      disabledMembers: [{ tool: "web_fetch", groups: ["Web"] }, { tool: "web_fetch", groups: ["Fetch"] }],
+      emptyGroups: [],
+      disabledMembers: [{ tool: "web_fetch", groups: ["Web"] }],
       duplicateMembers: [
         { tool: "web_search", groups: ["Web", "Search"] },
         { tool: "web_fetch", groups: ["Web", "Fetch"] },
       ],
     });
+  });
+
+  it("treats a fully disabled group as a legal whole-group off switch", () => {
+    const offPolicy = {
+      disabled: ["web_search", "web_fetch"],
+      groups: [{ name: "Web", patterns: ["web_*"] }],
+    };
+    assert.deepEqual(groupPolicyIssues(offPolicy, ["web_search", "web_fetch"]), {
+      emptyGroups: [],
+      disabledMembers: [],
+      duplicateMembers: [],
+    });
+    assert.deepEqual(resolveActiveGroups(offPolicy, ["web_search", "web_fetch"]), []);
+    assert.deepEqual(policyOrphans(offPolicy, ["web_search", "web_fetch"]).emptyGroups, []);
+    // 组内只剩一个工具被关闭时仍然是非法配置（整体启用或整体关闭）
+    const partialPolicy = {
+      disabled: ["web_fetch"],
+      groups: [{ name: "Web", patterns: ["web_*"] }],
+    };
+    assert.deepEqual(groupPolicyIssues(partialPolicy, ["web_search", "web_fetch"]).disabledMembers, [
+      { tool: "web_fetch", groups: ["Web"] },
+    ]);
   });
 
   it("finds a group by name case-insensitively", () => {
