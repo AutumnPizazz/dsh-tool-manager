@@ -2,7 +2,6 @@ import type { AgentPresetsLike, ToolRuntimeLike } from "./dsh.js";
 import { schemasForPreset } from "./dsh.js";
 import { policyFor, policyOrphans, resolveGroups } from "./policy.js";
 import {
-  DISCOVERY_TOOL_NAME,
   PTC_TRANSPORT_NAME,
   type PresetCatalogView,
   type ToolManagerSettings,
@@ -29,7 +28,7 @@ export async function buildSnapshot(
         const standing = await schemasForPreset(presets, tools, composition.id);
         const observed = observedSchemas?.(composition.id) ?? [];
         schemas = mergeSchemas(standing, observed)
-          .filter((schema) => schema.name !== DISCOVERY_TOOL_NAME && schema.name !== PTC_TRANSPORT_NAME)
+          .filter((schema) => schema.name !== PTC_TRANSPORT_NAME)
           .map(projectSchema);
       } catch (error) {
         broken = error instanceof Error ? error.message : String(error);

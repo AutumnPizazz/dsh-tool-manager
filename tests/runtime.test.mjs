@@ -3,25 +3,12 @@ import assert from "node:assert/strict";
 import { ToolPolicyRuntime } from "../dist/runtime.js";
 import { TOOL_MANAGER_PROBE_SESSION_ID } from "../dist/types.js";
 
-function resumedSession() {
-  const events = [
-    { type: "tool/call", data: { callId: "open-1", name: "tool_list", arguments: JSON.stringify({ group: "GitHub" }) } },
-    {
-      type: "tool/result",
-      data: { message: { content: [{ type: "tool-result", toolCallId: "open-1", content: [], isError: false }] } },
-    },
-    { type: "tool/call", data: { callId: "old-1", name: "tool_list", arguments: JSON.stringify({ group: "Removed" }) } },
-    {
-      type: "tool/result",
-      data: { message: { content: [{ type: "tool-result", toolCallId: "old-1", content: [], isError: false }] } },
-    },
-  ];
+function sessionStub() {
   return {
-    seq: events.length,
+    seq: 0,
     inheritedEventCount: 0,
-    eventAt(seq) {
-      const event = events[seq];
-      return event === undefined ? undefined : { seq, ...event };
+    eventAt() {
+      return undefined;
     },
     surface: { nodes: [] },
   };
@@ -38,7 +25,7 @@ describe("ToolPolicyRuntime restart recovery", () => {
     };
     const agent = {
       ctx: { get(name) { return name === "tools" ? scopedTools : undefined; }, on() {} },
-      session: resumedSession(),
+      session: sessionStub(),
     };
     const context = {
       get(name) {
@@ -79,7 +66,7 @@ describe("ToolPolicyRuntime restart recovery", () => {
         },
         on() {},
       },
-      session: resumedSession(),
+      session: sessionStub(),
     };
     const context = {
       get(name) {
@@ -113,7 +100,7 @@ describe("ToolPolicyRuntime restart recovery", () => {
         get(name) { return name === "tools" ? scopedTools : undefined; },
         on(name, handler) { if (name === "system-prompt/assemble") assemble = handler; return () => {}; },
       },
-      session: resumedSession(),
+      session: sessionStub(),
     };
     const context = {
       get(name) {
@@ -142,14 +129,14 @@ describe("ToolPolicyRuntime restart recovery", () => {
     await runtime.dispose();
   });
 
-  it("explains when a tool's on-demand group must be opened first", async () => {
-    const schemas = ["tool_list", "plugin_manager", "subagent"].map((name) => ({
+  it("guards only explicitly disabled tools and registers no discovery tool", async () => {
+    const schemas = ["plugin_manager", "subagent"].map((name) => ({
       name,
       description: name,
       parameters: {},
     }));
     let guard;
-    let discovery;
+    let registered;
     const scopedTools = {
       schemas() { return schemas; },
       register() { throw new Error("scope register should not be used"); },
@@ -161,13 +148,13 @@ describe("ToolPolicyRuntime restart recovery", () => {
         get(name) { return name === "tools" ? scopedTools : undefined; },
         on() { return () => {}; },
       },
-      session: resumedSession(),
+      session: sessionStub(),
     };
     const context = {
       get(name) {
         if (name === "tools") return {
           schemas() { return schemas; },
-          register(definition) { discovery = definition; return () => {}; },
+          register(definition) { registered = definition; return () => {}; },
         };
         if (name === "agents") return { list: () => [agent] };
         return undefined;
@@ -188,21 +175,16 @@ describe("ToolPolicyRuntime restart recovery", () => {
     });
     runtime.start();
 
-    assert.equal(
-      guard({ name: "plugin_manager" }),
-      'tool "plugin_manager" belongs to on-demand group "Cordis插件管理" which is not open; call tool_list with {"group":"Cordis插件管理"} first',
-    );
-    assert.match(guard({ name: "subagent" }), /disabled by the tool-manager policy/);
-
-    await discovery.execute({ group: "Cordis插件管理" }, { agent });
-
+    // 插件不再注册任何模型工具（曾经是 tool_list）。
+    assert.equal(registered, undefined);
+    // 分组不再是屏蔽手段：组内未弃用的工具与模型可见面无差别。
     assert.equal(guard({ name: "plugin_manager" }), undefined);
     assert.match(guard({ name: "subagent" }), /disabled by the tool-manager policy/);
     await runtime.dispose();
   });
 
   it("keeps standard delegation policy isolated from creator sessions and restores it", async () => {
-    const schemas = ["tool_list", "read", "list_subagent_models", "subagent"].map((name) => ({
+    const schemas = ["read", "list_subagent_models", "subagent"].map((name) => ({
       name,
       description: name,
       parameters: {},
@@ -219,7 +201,7 @@ describe("ToolPolicyRuntime restart recovery", () => {
         restrict({ deny }) {
           const local = deny.filter((name) => name === "list_subagent_models" || name === "subagent");
           if (local.length) {
-            throw new Error(`tool ${JSON.stringify(local[0])} is scoped, not globally restrictable; known global tools: tool_list, read`);
+            throw new Error(`tool ${JSON.stringify(local[0])} is scoped, not globally restrictable; known global tools: read`);
           }
           restricted = new Set(deny);
           handlers.get("tools/change")?.();
@@ -240,7 +222,7 @@ describe("ToolPolicyRuntime restart recovery", () => {
             return () => {};
           },
         },
-        session: resumedSession(),
+        session: sessionStub(),
         get guard() { return guard; },
         get assemble() { return assemble; },
       };
@@ -287,9 +269,9 @@ describe("ToolPolicyRuntime restart recovery", () => {
 
     const standardDisabled = await standard.assemble({}, {}, async () => assembly());
     const creatorUnaffected = await creator.assemble({}, {}, async () => assembly());
-    const enabledWithoutDiscovery = schemas.filter((item) => item.name !== "tool_list").map((item) => item.name);
+    const allNames = schemas.map((item) => item.name);
     assert.deepEqual(standardDisabled.tools.map((item) => item.name), ["read"]);
-    assert.deepEqual(creatorUnaffected.tools.map((item) => item.name), enabledWithoutDiscovery);
+    assert.deepEqual(creatorUnaffected.tools.map((item) => item.name), allNames);
     assert.match(standard.guard({ name: "subagent" }), /disabled by the tool-manager policy/);
     assert.equal(creator.guard({ name: "subagent" }), undefined);
 
@@ -297,8 +279,8 @@ describe("ToolPolicyRuntime restart recovery", () => {
 
     const standardRestored = await standard.assemble({}, {}, async () => assembly());
     const creatorStillUnaffected = await creator.assemble({}, {}, async () => assembly());
-    assert.deepEqual(standardRestored.tools.map((item) => item.name), enabledWithoutDiscovery);
-    assert.deepEqual(creatorStillUnaffected.tools.map((item) => item.name), enabledWithoutDiscovery);
+    assert.deepEqual(standardRestored.tools.map((item) => item.name), allNames);
+    assert.deepEqual(creatorStillUnaffected.tools.map((item) => item.name), allNames);
     assert.equal(standard.guard({ name: "subagent" }), undefined);
     assert.equal(creator.guard({ name: "subagent" }), undefined);
     await runtime.dispose();
@@ -336,7 +318,7 @@ describe("ToolPolicyRuntime restart recovery", () => {
     const agent = {
       id: "switching-agent",
       ctx: { get(name) { return name === "tools" ? scopedTools : undefined; }, on() { return () => {}; } },
-      session: resumedSession(),
+      session: sessionStub(),
     };
     const context = {
       get(name) {
@@ -364,9 +346,9 @@ describe("ToolPolicyRuntime restart recovery", () => {
     await runtime.dispose();
   });
 
-  it("keeps restored groups open while enforcing other hidden and disabled tools", async () => {
+  it("applies a group-wide disable exactly like other disables", async () => {
     const applied = [];
-    const schemas = ["tool_list", "mcp__github__issue", "web_search", "write"].map((name) => ({
+    const schemas = ["mcp__github__issue", "web_search", "write"].map((name) => ({
       name,
       description: name,
       parameters: {},
@@ -381,7 +363,7 @@ describe("ToolPolicyRuntime restart recovery", () => {
     };
     const agent = {
       ctx: { get(name) { return name === "tools" ? scopedTools : undefined; }, on() {} },
-      session: resumedSession(),
+      session: sessionStub(),
     };
     const handlers = new Map();
     const hostTools = {
@@ -413,7 +395,20 @@ describe("ToolPolicyRuntime restart recovery", () => {
     const runtime = new ToolPolicyRuntime(context, presets, settings);
     runtime.start();
 
-    assert.deepEqual(applied.at(-1), ["web_search", "write"]);
+    // 分组不再对模型隐藏任何工具：只有显式弃用的 write 进入 deny。
+    assert.deepEqual(applied.at(-1), ["write"]);
+
+    // 「整组弃用」＝把该组成员逐个写进 disabled，和逐个弃用完全等价。
+    runtime.update({
+      presets: {
+        standard: {
+          disabled: ["write", "web_search", "mcp__github__issue"],
+          groups: settings.presets.standard.groups,
+        },
+      },
+    });
+
+    assert.deepEqual(applied.at(-1), ["mcp__github__issue", "web_search", "write"]);
     await runtime.dispose();
   });
 });

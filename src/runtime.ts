@@ -6,24 +6,14 @@ import type {
   ToolSchemaLike,
 } from "./dsh.js";
 import {
-  applyCatalogDecision,
-  catalogEntriesFromGroups,
-  catalogHistory,
-} from "./catalog.js";
-import { restoredExposureNames } from "./exposure-history.js";
-import {
   denyNames,
-  findGroup,
   parseKnownRestrictable,
   policyFor,
-  resolveActiveGroups,
   sameNames,
 } from "./policy.js";
 import {
-  DISCOVERY_TOOL_NAME,
   TOOL_MANAGER_PROBE_SESSION_ID,
   type PresetToolPolicy,
-  type ToolListResult,
   type ToolManagerSettings,
 } from "./types.js";
 
@@ -34,16 +24,23 @@ interface AgentState {
   restriction?: () => void;
   guard?: () => void;
   assemblyFilter?: () => void;
-  readonly exposures: Set<string>;
 }
 
+/**
+ * Applies the stored per-Preset policy to every live Agent.
+ *
+ * The policy has exactly one effect on the model: tools listed as disabled
+ * disappear from the Agent's tool set (registry restriction plus a prompt
+ * assembly filter). Groups are a settings-page convenience — they exist so a
+ * human can enable or disable a bundle of tools in one click — and never
+ * change what the model sees.
+ */
 export class ToolPolicyRuntime {
   private settings: ToolManagerSettings;
   private readonly states = new Map<AgentLike, AgentState>();
   private readonly observedSchemas = new Map<string, Map<string, ToolSchemaLike>>();
   private mutating = false;
   private refreshQueued = false;
-  private discoveryDisposer?: () => void;
 
   constructor(
     private readonly ctx: ContextLike,
@@ -54,7 +51,6 @@ export class ToolPolicyRuntime {
   }
 
   start(): void {
-    this.registerDiscovery();
     const agents = this.ctx.get<{ list(): AgentLike[] }>("agents");
     for (const agent of agents?.list() ?? []) this.install(agent);
 
@@ -67,21 +63,11 @@ export class ToolPolicyRuntime {
       if (payload) this.uninstall(payload.agent);
     });
     this.ctx.on("tools/change", () => this.queueBaselineRefresh());
-    this.ctx.on("agent/pre-step", (...args: unknown[]) => this.onPreStep(args[0], args[1]));
   }
 
   update(next: ToolManagerSettings): void {
     this.settings = next;
-    for (const state of this.states.values()) {
-      const known = new Set(
-        resolveActiveGroups(this.policy(state.agent), state.baseline)
-          .map((group) => group.name.toLowerCase()),
-      );
-      for (const name of [...state.exposures]) {
-        if (!known.has(name.toLowerCase())) state.exposures.delete(name);
-      }
-      this.reconcile(state);
-    }
+    for (const state of this.states.values()) this.reconcile(state);
   }
 
   private install(agent: AgentLike): void {
@@ -89,19 +75,10 @@ export class ToolPolicyRuntime {
     if (!agent.ctx.get("tools")) return;
 
     const baselineSchemas = this.inheritedSchemas(agent);
-    const baseline = baselineSchemas.map((schema) => schema.name);
-    const groups = resolveActiveGroups(this.policy(agent), baseline);
-    const restored = restoredExposureNames(agent.session);
-    const exposures = new Set<string>();
-    for (const name of restored) {
-      const group = findGroup(groups, name);
-      if (group) exposures.add(group.name);
-    }
     const state: AgentState = {
       agent,
-      baseline,
+      baseline: baselineSchemas.map((schema) => schema.name),
       baselineSchemas,
-      exposures,
     };
     this.states.set(agent, state);
     this.observe(state);
@@ -129,10 +106,6 @@ export class ToolPolicyRuntime {
 
   private policy(agent: AgentLike): PresetToolPolicy {
     return policyFor(this.settings, this.presetId(agent));
-  }
-
-  private hostTools(): ToolRuntimeLike | undefined {
-    return this.ctx.get<ToolRuntimeLike>("tools");
   }
 
   private inheritedSchemas(agent: AgentLike): ToolSchemaLike[] {
@@ -164,17 +137,10 @@ export class ToolPolicyRuntime {
     const scopedTools = state.agent.ctx.get<ToolRuntimeLike>("tools");
     state.guard = scopedTools?.guard?.((execution) => {
       const policy = this.policy(state.agent);
-      const hidden = denyNames(policy, state.baseline, state.exposures);
+      const hidden = denyNames(policy, state.baseline);
       if (!hidden.includes(execution.name)) return undefined;
       if (policy.disabled.includes(execution.name)) {
         return `tool ${JSON.stringify(execution.name)} is disabled by the tool-manager policy for this Agent preset`;
-      }
-      const open = new Set([...state.exposures].map((name) => name.toLowerCase()));
-      const group = resolveActiveGroups(policy, state.baseline).find((item) => (
-        !open.has(item.name.toLowerCase()) && item.tools.includes(execution.name)
-      ));
-      if (group) {
-        return `tool ${JSON.stringify(execution.name)} belongs to on-demand group ${JSON.stringify(group.name)} which is not open; call ${DISCOVERY_TOOL_NAME} with ${JSON.stringify({ group: group.name })} first`;
       }
       return `tool ${JSON.stringify(execution.name)} is unavailable under the tool-manager policy for this Agent preset`;
     });
@@ -183,7 +149,7 @@ export class ToolPolicyRuntime {
       if (typeof next !== "function") return args[0];
       const assembly = await (next as () => Promise<unknown>)();
       if (!isPromptAssembly(assembly)) return assembly;
-      const hidden = new Set(denyNames(this.policy(state.agent), state.baseline, state.exposures));
+      const hidden = new Set(denyNames(this.policy(state.agent), state.baseline));
       if (hidden.size === 0) return assembly;
       return {
         ...assembly,
@@ -227,108 +193,8 @@ export class ToolPolicyRuntime {
     for (const state of this.states.values()) this.reconcile(state);
   }
 
-  private openGroup(agent: AgentLike, requestedGroup: string | undefined): ToolListResult {
-    const state = this.states.get(agent);
-    if (!state) throw new Error("tool manager is not attached to this Agent");
-    const groups = resolveActiveGroups(this.policy(agent), state.baseline);
-    const known = groups.map((item) => item.name).join(", ") || "(none)";
-    if (requestedGroup === undefined || requestedGroup.trim() === "") {
-      throw new Error(`group is required; known groups: ${known}`);
-    }
-    const group = findGroup(groups, requestedGroup);
-    if (!group) {
-      throw new Error(`unknown tool group ${JSON.stringify(requestedGroup)}; known groups: ${known}`);
-    }
-    state.exposures.add(group.name);
-    this.reconcile(state);
-    return {
-      name: group.name,
-      ...(group.description ? { description: group.description } : {}),
-      tools: group.tools,
-    };
-  }
-
-  private async onPreStep(payload: unknown, next: unknown): Promise<unknown> {
-    const decision = typeof next === "function"
-      ? await (next as () => Promise<unknown>)()
-      : payload;
-    if (!isEnterDecision(decision)) return decision;
-    const agent = asCreated(payload)?.agent;
-    if (!agent) return decision;
-    if (!this.states.has(agent)) this.install(agent);
-    const state = this.states.get(agent);
-    if (!state) return decision;
-    const groups = resolveActiveGroups(this.policy(agent), state.baseline);
-    return applyCatalogDecision(
-      decision,
-      catalogEntriesFromGroups(groups),
-      catalogHistory(agent),
-    );
-  }
-
-  /**
-   * Register `tool_list` on the host/global tools layer, not per agent.
-   *
-   * PTC prompt assembly projects inherited (global + preset-standing) tools
-   * into the SDK. A scope-local registration on `agent.ctx` is visible to
-   * `schemas(agent)` after the fact, but is easy to lose at `agent/created`
-   * and is the wrong layer for the generated SDK. `skill` works in PTC
-   * because the preset standing scope inherits it; `tool_list` must do the
-   * same. Presets without active (non-empty) on-demand groups hide it with `restrict()`.
-   */
-  private registerDiscovery(): void {
-    const tools = this.hostTools();
-    if (!tools) return;
-    this.mutating = true;
-    try {
-      this.discoveryDisposer?.();
-      this.discoveryDisposer = tools.register(this.discoveryDefinition());
-    } catch (error) {
-      this.discoveryDisposer = undefined;
-      this.warn(`tool-manager failed to register ${DISCOVERY_TOOL_NAME}: ${errorMessage(error)}`);
-    } finally {
-      this.mutating = false;
-    }
-  }
-
-  private discoveryDefinition(): unknown {
-    return {
-      name: DISCOVERY_TOOL_NAME,
-      description:
-        "Open one on-demand tool group by exact name from this session's tool-group catalog. All tools in that group become available for the rest of this session.",
-      parameters: {
-        type: "object",
-        properties: {
-          group: {
-            type: "string",
-            description: "Exact group name from this session's tool-group catalog.",
-          },
-        },
-        required: ["group"],
-      },
-      output: {
-        schema: { type: "object", additionalProperties: true },
-        render: (_args: unknown, value: unknown) => [
-          { type: "text", text: JSON.stringify(value, null, 2) },
-        ],
-      },
-      execute: async (
-        args: { group?: string },
-        exec?: { agent?: AgentLike },
-      ) => {
-        const agent = exec?.agent;
-        if (!agent) throw new Error("tool_list requires a calling agent");
-        return this.openGroup(agent, args.group);
-      },
-    };
-  }
-
   private reconcile(state: AgentState): void {
-    const deny = denyNames(
-      this.policy(state.agent),
-      state.baseline,
-      state.exposures,
-    );
+    const deny = denyNames(this.policy(state.agent), state.baseline);
     this.mutating = true;
     try {
       state.restriction?.();
@@ -369,13 +235,6 @@ export class ToolPolicyRuntime {
 
   async dispose(): Promise<void> {
     for (const agent of [...this.states.keys()]) this.uninstall(agent);
-    this.mutating = true;
-    try {
-      this.discoveryDisposer?.();
-      this.discoveryDisposer = undefined;
-    } finally {
-      this.mutating = false;
-    }
   }
 }
 
@@ -384,12 +243,6 @@ function asCreated(value: unknown): { agent: AgentLike } | undefined {
   const agent = (value as { agent?: AgentLike }).agent;
   if (!agent || typeof agent !== "object" || !("ctx" in agent)) return undefined;
   return { agent };
-}
-
-function isEnterDecision(value: unknown): value is { kind: "enter"; messages: unknown[] } {
-  if (value === null || typeof value !== "object") return false;
-  const record = value as { kind?: unknown; messages?: unknown };
-  return record.kind === "enter" && Array.isArray(record.messages);
 }
 
 function isPromptAssembly(value: unknown): value is {

@@ -14,6 +14,13 @@
 ### Changed
 
 - 保存校验的「已关闭工具不能入组」规则改为「整组启用或整组关闭」：组内工具全部被关闭时，该组是合法的整体关闭状态，不再报 `has disabled tool ... in group ...`，也不再把这类组算作空组；只有匹配不到任何工具的组仍按空组报错。抛错文案同步改为 `A group must be either fully enabled or fully disabled.`
+- 界面措辞统一为「启用 / 弃用」：状态徽标、整组开关的 title、筛选器与统计卡（`按需工具` → `分组工具`、`已关闭工具` → `已弃用工具`）。
+- 分组行排版收紧：展开箭头并入标题（点标题展开/收起），拖拽把手 `⋮⋮` 改为悬停时显示，行缩进从「把手 + 开关 + 箭头」三列压到 26px，成员行 18px。
+
+### Removed
+
+- 移除「按需（on-demand）加载」整套链路：插件不再注册 `tool_list`，不再向会话写入分组目录消息，不再从 Session 事件日志恢复「已打开的组」，也不再挂 `agent/pre-step`。分组从此只是**人类的一键批量启停开关**，永不改变模型可见面——只有「弃用」（写进该 Preset 的 `disabled`）才会让工具从 schema、lookup 与 dispatch 同时消失。
+- 删除 `src/catalog.ts`（215 行）与 `src/exposure-history.ts`（97 行）及各自的测试；`src/policy.ts` 去掉 `resolveActiveGroups` / `listGroupViews` / `findGroup` / `emptyGroupNames`，`denyNames()` 去掉曝光参数，`ToolCatalogStats.onDemandTools` 改名 `groupedTools`。
 
 ## [1.2.10] - 2026-10-08
 

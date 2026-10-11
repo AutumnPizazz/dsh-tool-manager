@@ -22,12 +22,12 @@ window.__ModuleLoader__.load({
 			".tm_stats{display:grid;grid-template-columns:repeat(5,minmax(100px,1fr));gap:8px;padding:10px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.13))}.tm_stat{min-width:0;padding:9px 10px;border-radius:8px;background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.07));border:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.15))}.tm_stat_value{font-size:18px;font-weight:700;line-height:1.2}.tm_stat_label{margin-top:3px;font-size:11px;color:var(--dsw-alias-label-secondary,#9097a4)}@media(max-width:720px){.tm_stats{grid-template-columns:repeat(2,minmax(100px,1fr))}}",
 			".tm_badge{display:inline-block;margin-left:6px;padding:2px 7px;border:1px solid transparent;border-radius:999px;font-size:10px;font-weight:700;line-height:1.35;letter-spacing:.02em;vertical-align:middle;color:#fff}.tm_badge.off{background:#b42318;border-color:#d92d20;color:#fff}.tm_badge.cold{background:#4338ca;border-color:#6366f1;color:#fff}.tm_badge.live{background:#15803d;border-color:#22c55e;color:#fff}",
 			".tm_group{border-bottom:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.13))}.tm_group:last-child{border-bottom:0}",
-			".tm_group_bar{display:flex;align-items:center;gap:8px;padding:11px 14px}",
-			".tm_chevron{appearance:none;border:0;background:transparent;color:inherit;width:28px;height:28px;border-radius:7px;cursor:pointer;font:16px/1 inherit;flex:0 0 auto}.tm_chevron:hover{background:var(--dsw-alias-bg-layer-1,rgba(128,128,128,.1))}",
+			".tm_group_bar{position:relative;display:flex;align-items:center;gap:8px;padding:11px 14px 11px 26px}",
+			".tm_caret{display:inline-block;width:13px;margin-right:2px;color:var(--dsw-alias-label-secondary,#9097a4);font-size:10px;line-height:1;vertical-align:middle}" + ".tm_drag{opacity:0;transition:opacity .15s ease}" + ".tm_group_bar:hover .tm_drag,.tm_member:hover .tm_drag,.tm_group_bar .tm_drag:active,.tm_member .tm_drag:active{opacity:1}",
 			".tm_group_main{appearance:none;border:0;background:transparent;color:inherit;text-align:left;flex:1;min-width:0;cursor:pointer;padding:0}",
 			".tm_group_title{font-size:13px;font-weight:600;line-height:1.3}.tm_group_sub{font-size:11px;color:var(--dsw-alias-label-secondary,#9097a4);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 			".tm_group_count{flex:0 0 auto;font-size:12px;color:var(--dsw-alias-label-secondary,#9097a4)}",
-			".tm_group_body{padding:0 14px 12px 50px}",
+			".tm_group_body{padding:0 14px 12px 38px}",
 			".tm_member{padding:7px 0;border-bottom:1px solid var(--dsw-alias-border-l2,rgba(128,128,128,.08))}.tm_member:last-child{border-bottom:0}",
 			".tm_modal{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:24px}",
 			".tm_modal_mask{position:absolute;inset:0;background:rgba(0,0,0,.55)}",
@@ -41,7 +41,7 @@ window.__ModuleLoader__.load({
 			".tm_drag:active{cursor:grabbing}",
 			".tm_switch{flex:0 0 auto;display:inline-flex;align-items:center;cursor:pointer}",
 			".tm_switch input{margin:0;cursor:pointer}",
-			".tm_member{display:flex;gap:8px;align-items:flex-start}",
+			".tm_member{position:relative;display:flex;gap:8px;align-items:flex-start;padding-left:18px}",
 			".tm_group_off .tm_group_title{color:var(--dsw-alias-label-secondary,#9097a4)}",
 			".tm_drop_before{box-shadow:inset 0 2px 0 0 var(--dsw-alias-brand-primary,#4d6bfe)}",
 			".tm_drop_after{box-shadow:inset 0 -2px 0 0 var(--dsw-alias-brand-primary,#4d6bfe)}",
@@ -192,14 +192,14 @@ window.__ModuleLoader__.load({
 			const disabled = new Set(preset.policy.disabled || []);
 			const grouped = groupedNames(preset);
 			let ungroupedTools = 0;
-			let onDemandTools = 0;
+			let groupedTools = 0;
 			let disabledTools = 0;
 			for (const tool of preset.tools || []) {
 				if (disabled.has(tool.name)) disabledTools += 1;
-				else if (grouped.has(tool.name)) onDemandTools += 1;
+				else if (grouped.has(tool.name)) groupedTools += 1;
 				else ungroupedTools += 1;
 			}
-			return { totalTools: (preset.tools || []).length, groupCount: (preset.policy.groups || []).length, ungroupedTools, onDemandTools, disabledTools };
+			return { totalTools: (preset.tools || []).length, groupCount: (preset.policy.groups || []).length, ungroupedTools, groupedTools, disabledTools };
 		}
 		function matchesQuery(tool, needle) {
 			if (!needle) return true;
@@ -219,7 +219,7 @@ window.__ModuleLoader__.load({
 			}));
 			const forbidden = (otherGroupNames && otherGroupNames.length > 0) ? otherGroupNames : ["（无）"];
 			return [
-				"请把以下尚未分组的工具按共同能力和使用场景聚类成多个按需工具组，并为每组生成中文名称和描述。",
+				"请把以下尚未分组的工具按共同能力和使用场景聚类成多个工具组，并为每组生成中文名称和描述。",
 				"要求：",
 				"1. 每个工具最多出现在一个组；tools 必须使用输入中的精确工具名。",
 				"2. 不要为了覆盖全部工具而制造不合理分组；不适合归组的工具放入 ungrouped。",
@@ -240,7 +240,7 @@ window.__ModuleLoader__.load({
 			}));
 			const forbidden = (otherGroupNames && otherGroupNames.length > 0) ? otherGroupNames : ["（无）"];
 			return [
-				"请根据以下已选择的工具，为一个按需工具组生成名称和描述。",
+				"请根据以下已选择的工具，为一个工具组生成名称和描述。",
 				"要求：",
 				"1. 名称使用简洁自然的中文，概括共同用途，建议 2 到 10 个汉字。",
 				"2. 描述使用一句简洁中文，说明该组适合完成什么任务，不要逐个罗列工具。",
@@ -504,7 +504,7 @@ window.__ModuleLoader__.load({
 				const alreadyGrouped = groupedNames(preset);
 				const candidates = (preset.tools || []).filter((tool) => !disabledNames.has(tool.name) && !alreadyGrouped.has(tool.name));
 				if (!candidates.length) {
-					setAutoGroupError("当前没有未分组且未关闭的工具。");
+					setAutoGroupError("当前没有未分组且已启用的工具。");
 					return;
 				}
 				const allCandidateNames = candidates.map((tool) => tool.name);
@@ -599,7 +599,7 @@ window.__ModuleLoader__.load({
 					const issues = groupDraftIssues(item);
 					if (issues.partial.length) {
 						const issue = issues.partial[0];
-						setError("Preset “" + item.id + "”中的分组“" + issue.group + "”里有部分工具已关闭（例如“" + issue.tool + "”）。分组只能整体启用或整体关闭，请用分组开关切换后再保存。");
+						setError("Preset “" + item.id + "”中的分组“" + issue.group + "”里有部分工具已弃用（例如“" + issue.tool + "”）。分组只能整体启用或整体弃用，请用分组开关切换后再保存。");
 						setMessage("");
 						return;
 					}
@@ -640,13 +640,17 @@ window.__ModuleLoader__.load({
 				if (!needle) return true;
 				return title.includes(needle) || description.includes(needle) || members.some((tool) => matchesQuery(tool, needle));
 			});
-			const showGroups = filter === "all" || filter === "cold";
+			const listedGroups = visibleGroups.filter((group) => {
+				if (filter === "all") return true;
+				const off = groupIsOff(preset, group, disabled);
+				return filter === "disabled" ? off : !off;
+			});
 			const visibleTools = (preset.tools || []).filter((tool) => {
-				if (filter === "cold") return false;
 				if (!matchesQuery(tool, needle)) return false;
+				if (grouped.has(tool.name)) return false;
 				if (filter === "disabled") return disabled.has(tool.name);
-				if (filter === "live") return !disabled.has(tool.name) && !grouped.has(tool.name);
-				return !grouped.has(tool.name);
+				if (filter === "live") return !disabled.has(tool.name);
+				return true;
 			});
 			const orphans = (preset.policy.disabled || []).filter((name) => !(preset.tools || []).some((tool) => tool.name === name));
 			const modalNeedle = String(modal && modal.query || "").trim().toLowerCase();
@@ -659,7 +663,6 @@ window.__ModuleLoader__.load({
 			const modalMatchedTools = modal ? matchingTools(preset.tools, modal.patterns || []).filter((tool) => modalEligibleNames.has(tool.name)) : [];
 			const modalInvalidSelected = modal ? [...modalSelected].filter((name) => !modalEligibleNames.has(name)) : [];
 			const canConfirm = !!(modal && String(modal.name || "").trim() && modalMatchedTools.length > 0 && modalInvalidSelected.length === 0);
-			const listedGroups = showGroups ? visibleGroups : [];
 			const aiIsAutoGroup = !!(aiConfirm && aiConfirm.kind === "auto-group");
 			const aiNeedle = String(aiConfirm && aiConfirm.query || "").trim().toLowerCase();
 			const aiCandidates = (preset.tools || []).filter((tool) => !disabled.has(tool.name) && !grouped.has(tool.name));
@@ -715,12 +718,11 @@ window.__ModuleLoader__.load({
 							},
 							onDragEnd: () => { setDrag(null); setDropHint(null); },
 						}, "⋮⋮"),
-						h("label", { className: "tm_switch", title: off ? "整组启用" : "整组关闭" },
+						h("label", { className: "tm_switch", title: off ? "整组启用" : "整组弃用" },
 							h("input", { type: "checkbox", checked: !off, disabled: members.length === 0, onChange: () => toggleGroup(group) }),
 						),
-						h("button", { className: "tm_chevron", title: open ? "收起" : "展开", onClick: () => setExpanded((current) => ({ ...current, [key]: !current[key] })) }, open ? "▾" : "▸"),
-						h("button", { className: "tm_group_main", onClick: () => setExpanded((current) => ({ ...current, [key]: !current[key] })) },
-							h("div", { className: "tm_group_title" }, title, off ? h("span", { className: "tm_badge off" }, "整组关闭") : h("span", { className: "tm_badge cold" }, "按需")),
+						h("button", { className: "tm_group_main", title: open ? "收起" : "展开", onClick: () => setExpanded((current) => ({ ...current, [key]: !current[key] })) },
+							h("div", { className: "tm_group_title" }, h("span", { className: "tm_caret" }, open ? "▾" : "▸"), title, off ? h("span", { className: "tm_badge off" }, "已弃用") : h("span", { className: "tm_badge live" }, "启用")),
 							h("div", { className: "tm_group_sub" }, group.description || "没有描述"),
 						),
 						h("span", { className: "tm_group_count" }, members.length + " 个工具"),
@@ -729,7 +731,7 @@ window.__ModuleLoader__.load({
 					),
 					open ? h("div", { className: "tm_group_body" }, members.length
 						? [
-							off ? h("div", { className: "tm_muted", style: { padding: "6px 0" } }, "整组已关闭：这些工具对模型隐藏，打开左侧开关即可整体启用。") : null,
+							off ? h("div", { className: "tm_muted", style: { padding: "6px 0" } }, "整组已弃用：这些工具对模型隐藏，打开左侧开关即可整体启用。") : null,
 							...members.map((tool) => {
 								const memberHint = dropHint && dropHint.kind === "member" && dropHint.groupKey === key && dropHint.name === tool.name ? dropHint.position : "";
 								return h("div", {
@@ -759,12 +761,12 @@ window.__ModuleLoader__.load({
 										},
 										onDragEnd: () => { setDrag(null); setDropHint(null); },
 									}, "⋮⋮"),
-									h("div", { className: "tm_tool_name" }, tool.name, disabled.has(tool.name) ? h("span", { className: "tm_badge off" }, "关闭") : null),
+									h("div", { className: "tm_tool_name" }, tool.name, disabled.has(tool.name) ? h("span", { className: "tm_badge off" }, "已弃用") : null),
 									h("div", { className: "tm_tool_desc", title: tool.description }, tool.description),
 								);
 							}),
 						]
-						: h("div", { className: "tm_error" }, "无效空组：请编辑并选择至少一个可用工具，或删除该组。"),
+						: h("div", { className: "tm_error" }, "无效空组：请编辑并选择至少一个已启用的工具，或删除该组。"),
 					) : null,
 				);
 			}
@@ -775,7 +777,7 @@ window.__ModuleLoader__.load({
 					h("input", { type: "checkbox", checked: enabled, onChange: () => toggleTool(tool.name) }),
 					h("span", null,
 						h("div", { className: "tm_tool_name" }, tool.name,
-							!enabled ? h("span", { className: "tm_badge off" }, "关闭") : h("span", { className: "tm_badge live" }, "常开"),
+							!enabled ? h("span", { className: "tm_badge off" }, "已弃用") : h("span", { className: "tm_badge live" }, "启用"),
 						),
 						h("div", { className: "tm_tool_desc", title: tool.description }, tool.description),
 					),
@@ -940,19 +942,19 @@ window.__ModuleLoader__.load({
 			) : null;
 
 			const dialog = modal && typeof document !== "undefined" ? reactDom.createPortal(
-				h("div", { className: "tm_modal", role: "dialog", "aria-modal": "true", "aria-label": modal.mode === "create" ? "新建按需组" : "编辑按需组" },
+				h("div", { className: "tm_modal", role: "dialog", "aria-modal": "true", "aria-label": modal.mode === "create" ? "新建分组" : "编辑分组" },
 					h("div", { className: "tm_modal_mask", onMouseDown: () => setModal(null) }),
 					h("div", { className: "tm_modal_card" },
 						h("div", { className: "tm_modal_head" },
 							h("div", null,
-								h("h3", null, modal.mode === "create" ? "新建按需组" : "编辑按需组"),
-								h("div", { className: "tm_muted" }, "筛选后勾选要收进该组的工具。确定后会显示在按需里。"),
+								h("h3", null, modal.mode === "create" ? "新建分组" : "编辑分组"),
+								h("div", { className: "tm_muted" }, "筛选后勾选要收进该组的工具。确定后会显示在分组里。"),
 							),
 							h("button", { className: "tm_btn", onClick: () => setModal(null) }, "关闭"),
 						),
 						h("div", { className: "tm_modal_body" },
 							h("div", { className: "tm_row" },
-								h("input", { className: "tm_input", value: modal.name, placeholder: "名称（模型用这个打开）", onChange: (e) => patchModal({ name: e.target.value, generateError: "" }) }),
+								h("input", { className: "tm_input", value: modal.name, placeholder: "名称（仅本页显示）", onChange: (e) => patchModal({ name: e.target.value, generateError: "" }) }),
 								h("button", { className: "tm_btn", disabled: modal.generating || modalMatchedTools.length === 0 || modalInvalidSelected.length > 0, onClick: generateGroupDetails }, modal.generating ? "生成中…" : "自动生成名称和描述"),
 							),
 							modal.generateError ? h("div", { className: "tm_error" }, modal.generateError) : null,
@@ -963,10 +965,10 @@ window.__ModuleLoader__.load({
 								h("button", { className: "tm_btn", disabled: visibleSelected.length === 0, onClick: () => patchModal({ patterns: (modal.patterns || []).filter((name) => !visibleSelected.includes(name)), generateError: "" }) }, "清除当前筛选"),
 							),
 							modalInvalidSelected.length
-								? h("div", { className: "tm_error" }, "以下工具已关闭或属于其他分组，不能加入当前组：" + modalInvalidSelected.join(", ") + "。请取消选择。")
+								? h("div", { className: "tm_error" }, "以下工具已弃用或属于其他分组，不能加入当前组：" + modalInvalidSelected.join(", ") + "。请取消选择。")
 								: h("div", { className: modalMatchedTools.length ? "tm_muted" : "tm_error" }, modalMatchedTools.length
 									? "已选 " + modalMatchedTools.length + " 个工具。自动生成会调用当前默认模型，结果仍可手动修改。"
-									: "每个按需组至少需要一个未关闭且未被其他组占用的工具。"),
+									: "每个分组至少需要一个已启用且未被其他组占用的工具。"),
 							pickerTools.length
 								? h("div", { className: "tm_picker" }, pickerTools.map((tool) => h("label", { className: "tm_pick", key: tool.name },
 									h("input", {
@@ -981,7 +983,7 @@ window.__ModuleLoader__.load({
 									}),
 									h("span", null,
 										h("div", { className: "tm_tool_name" }, tool.name,
-											disabled.has(tool.name) ? h("span", { className: "tm_badge off" }, "已关闭")
+											disabled.has(tool.name) ? h("span", { className: "tm_badge off" }, "已弃用")
 												: (!modalEligibleNames.has(tool.name) ? h("span", { className: "tm_badge off" }, "其他组") : null)),
 										h("div", { className: "tm_tool_desc", title: tool.description }, tool.description),
 									),
@@ -1010,7 +1012,7 @@ window.__ModuleLoader__.load({
 								h("div", { className: "tm_panel_head" }, h("div", { className: "tm_preview_meta" }, h("b", null, group.name), h("div", { className: "tm_preview_desc" }, group.description)), h("span", { className: "tm_group_count" }, group.tools.length + " 个工具")),
 								h("div", { style: { padding: "10px 14px" } }, group.tools.map((name) => h("div", { className: "tm_member tm_tool_name", key: name }, name))),
 							)),
-							autoPreview.ungrouped.length ? h("div", { className: "tm_notice" }, "保持常开、未归组：", h("span", { className: "tm_code" }, autoPreview.ungrouped.join(", "))) : null,
+							autoPreview.ungrouped.length ? h("div", { className: "tm_notice" }, "保持启用、未归组：", h("span", { className: "tm_code" }, autoPreview.ungrouped.join(", "))) : null,
 						),
 						h("div", { className: "tm_modal_foot" },
 							h("button", { className: "tm_btn", onClick: () => setAutoPreview(null) }, "取消"),
@@ -1025,7 +1027,7 @@ window.__ModuleLoader__.load({
 
 			return h("div", { className: "tm_root" },
 				h("div", { className: "tm_head" },
-					h("div", null, h("h2", null, "Agent 工具管理"), h("div", { className: "tm_muted" }, "按每个 Agent 预设开关工具。点「手动分组」把不常用的收进按需组：平时模型看不到，需要时先查目录再打开。")),
+					h("div", null, h("h2", null, "Agent 工具管理"), h("div", { className: "tm_muted" }, "按每个 Agent 预设启用或弃用工具。也可以把一组工具归为一组，用分组开关一键启用或弃用整组。")),
 					h("div", { className: "tm_row" },
 						h("button", { className: "tm_btn", onClick: reload, disabled: busy || autoGrouping }, "刷新"),
 						h("button", { className: "tm_btn primary", onClick: save, disabled: busy || autoGrouping || !draft.writable || !dirty }, busy ? "处理中…" : "保存"),
@@ -1054,24 +1056,23 @@ window.__ModuleLoader__.load({
 					h("div", { className: "tm_panel_head" },
 						h("div", null,
 							h("b", null, "工具目录"),
-							h("div", { className: "tm_muted" }, "关掉后立刻对模型隐藏。按需组默认隐藏，模型要先调用 tool_list 打开所在组才能使用。"),
-							h("div", { className: "tm_muted" }, "分组开关会把整组工具一起启用或关闭（不用逐个勾选）；拖动 ⋮⋮ 可以调整分组顺序和组内工具顺序，保存后生效。"),
-							h("div", { className: "tm_muted" }, "tool_list 只在当前 Preset 有有效按需组时才出现（保存后从下一个模型步骤生效），没有有效按需组时模型看不到它；它由插件自动管理，不出现在本页工具目录中，也不能在这里开关或分组。"),
+							h("div", { className: "tm_muted" }, "弃用后立刻对模型隐藏（从下一个模型步骤生效）。"),
+							h("div", { className: "tm_muted" }, "分组开关会把整组工具一起启用或弃用（不用逐个勾选）；鼠标移到行首的 ⋮⋮ 拖动，可以调整分组顺序和组内工具顺序，保存后生效。"),
 						),
 						h("div", { className: "tm_row" },
-							h("button", { className: "tm_btn", onClick: startAutoGroup, disabled: autoGrouping || autoGroupCandidates.length === 0, title: autoGroupCandidates.length ? "用默认模型对未分组且未关闭的工具进行聚类" : "没有可自动分组的工具" }, autoGrouping ? "自动分组中…" : "自动分组"),
+							h("button", { className: "tm_btn", onClick: startAutoGroup, disabled: autoGrouping || autoGroupCandidates.length === 0, title: autoGroupCandidates.length ? "用默认模型对未分组且已启用的工具进行聚类" : "没有可自动分组的工具" }, autoGrouping ? "自动分组中…" : "自动分组"),
 							h("button", { className: "tm_btn", onClick: openCreate, disabled: autoGrouping }, "手动分组"),
 						),
 					),
 					h("div", { className: "tm_stats" },
-						[["工具总量", stats.totalTools], ["分组数量", stats.groupCount], ["未分组工具", stats.ungroupedTools], ["按需工具", stats.onDemandTools], ["已关闭工具", stats.disabledTools]].map(([label, value]) =>
+						[["工具总量", stats.totalTools], ["分组数量", stats.groupCount], ["未分组工具", stats.ungroupedTools], ["已分组工具", stats.groupedTools], ["已弃用工具", stats.disabledTools]].map(([label, value]) =>
 							h("div", { className: "tm_stat", key: label }, h("div", { className: "tm_stat_value" }, value), h("div", { className: "tm_stat_label" }, label)),
 						),
 					),
 					h("div", { className: "tm_row", style: { padding: "10px 14px" } },
 						h("input", { className: "tm_input", value: query, placeholder: "搜索工具名、描述或组名", onChange: (e) => setQuery(e.target.value) }),
 						h("div", { className: "tm_filters" },
-							[["all", "全部"], ["live", "常开"], ["cold", "按需"], ["disabled", "已关闭"]].map(([id, label]) =>
+							[["all", "全部"], ["live", "启用"], ["disabled", "弃用"]].map(([id, label]) =>
 								h("button", { key: id, className: "tm_chip" + (filter === id ? " active" : ""), onClick: () => setFilter(id) }, label),
 							),
 						),
@@ -1083,7 +1084,7 @@ window.__ModuleLoader__.load({
 					listedGroups.map(renderGroup),
 					visibleTools.length ? h("div", { className: "tm_tools" }, visibleTools.map(renderTool)) : null,
 					empty ? h("div", { className: "tm_muted", style: { padding: "14px" } },
-						filter === "cold" ? (groups.length ? "没有符合筛选的按需组。" : "") : (preset.tools.length ? "没有符合筛选的工具。" : "这个 Preset 当前没有可见工具。"),
+						preset.tools.length ? "没有符合筛选的工具。" : "这个 Preset 当前没有可见工具。",
 					) : null,
 				),
 				dialog,

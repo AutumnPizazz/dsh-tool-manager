@@ -128,7 +128,7 @@ export function buildSuggestionPrompt(request: GroupSuggestionRequest): string {
   }));
   const forbidden = request.otherGroupNames.length > 0 ? request.otherGroupNames : ["（无）"];
   return [
-    "请根据以下已选择的工具，为一个按需工具组生成名称和描述。",
+    "请根据以下已选择的工具，为一个工具组生成名称和描述。",
     "要求：",
     "1. 名称使用简洁自然的中文，概括共同用途，建议 2 到 10 个汉字。",
     "2. 描述使用一句简洁中文，说明该组适合完成什么任务，不要逐个罗列工具。",
@@ -146,7 +146,7 @@ export function buildAutoGroupPrompt(request: AutoGroupRequest): string {
   }));
   const forbidden = request.otherGroupNames.length > 0 ? request.otherGroupNames : ["（无）"];
   return [
-    "请把以下尚未分组的工具按共同能力和使用场景聚类成多个按需工具组，并为每组生成中文名称和描述。",
+    "请把以下尚未分组的工具按共同能力和使用场景聚类成多个工具组，并为每组生成中文名称和描述。",
     "要求：",
     "1. 每个工具最多出现在一个组；tools 必须使用输入中的精确工具名。",
     "2. 不要为了覆盖全部工具而制造不合理分组；不适合归组的工具放入 ungrouped。",

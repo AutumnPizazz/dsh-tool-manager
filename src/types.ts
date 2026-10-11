@@ -1,4 +1,3 @@
-export const DISCOVERY_TOOL_NAME = "tool_list";
 export const PTC_TRANSPORT_NAME = "run_code";
 /** One durable internal Session shared by every cold-Preset schema probe. */
 export const TOOL_MANAGER_PROBE_SESSION_ID = "tool-manager-probe-internal-v1";
@@ -6,7 +5,7 @@ export const TOOL_MANAGER_PROBE_SESSION_ID = "tool-manager-probe-internal-v1";
 export type PresetPolicyMap = Record<string, PresetToolPolicy>;
 
 export interface ToolGroupPolicy {
-  /** Display name the model uses to open this group. */
+  /** Display name shown in the settings page. */
   name: string;
   /** Optional description of what the group is for. */
   description?: string;
@@ -17,7 +16,7 @@ export interface ToolGroupPolicy {
 export interface PresetToolPolicy {
   /** Exact tool names hidden for every session on this preset. */
   disabled: string[];
-  /** On-demand groups hidden until exposed with tool_list. */
+  /** Related tools bundled as one bulk enable/disable switch in the settings page. */
   groups: ToolGroupPolicy[];
 }
 
@@ -61,15 +60,3 @@ export interface ToolManagerSnapshot {
   configPath: string;
   presets: PresetCatalogView[];
 }
-
-export type ToolListGroupView = {
-  name: string;
-  description?: string;
-  exposed: boolean;
-};
-
-export type ToolListResult = {
-  name: string;
-  description?: string;
-  tools: string[];
-};

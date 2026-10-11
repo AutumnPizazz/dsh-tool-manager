@@ -2,16 +2,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   denyNames,
-  findGroup,
   groupPolicyIssues,
   hiddenTools,
-  listGroupViews,
   matchesPattern,
   normalizeGroupName,
   normalizeSettings,
   parseKnownRestrictable,
   policyOrphans,
-  resolveActiveGroups,
   resolveGroups,
 } from "../dist/policy.js";
 
@@ -50,7 +47,7 @@ describe("tool-manager policy", () => {
     assert.equal(matchesPattern("web-fetch", "web_*"), false);
   });
 
-  it("resolves group membership and hidden union", () => {
+  it("resolves group membership without hiding grouped tools", () => {
     const policy = {
       disabled: ["web_fetch"],
       groups: [{ name: "mcp", patterns: ["mcp__*"] }],
@@ -60,50 +57,26 @@ describe("tool-manager policy", () => {
       "mcp__git__status",
       "mcp__db__query",
     ]);
-    assert.deepEqual([...hiddenTools(policy, names)], [
-      "web_fetch",
-      "mcp__git__status",
-      "mcp__db__query",
-    ]);
+    // 分组只是人类的批量开关：只有显式弃用的工具才会对模型隐藏。
+    assert.deepEqual([...hiddenTools(policy, names)], ["web_fetch"]);
   });
 
-  it("keeps exposed group tools visible unless explicitly disabled", () => {
+  it("denies only the explicitly disabled names, whatever the groups say", () => {
     const policy = {
       disabled: ["mcp__git__status"],
       groups: [{ name: "mcp", patterns: ["mcp__*"] }],
     };
     const names = ["read", "web_fetch", "mcp__git__status", "mcp__db__query"];
-    assert.deepEqual(denyNames(policy, names, new Set(["mcp"])), [
-      "mcp__git__status",
-    ]);
-    assert.deepEqual(denyNames(policy, names, new Set()), [
-      "mcp__git__status",
-      "mcp__db__query",
-    ]);
+    assert.deepEqual(denyNames(policy, names), ["mcp__git__status"]);
+    assert.deepEqual(denyNames({ disabled: [], groups: [{ name: "mcp", patterns: ["mcp__*"] }] }, names), []);
   });
 
-  it("never denies discovery or PTC transport even if a policy names them", () => {
+  it("never denies the PTC transport even if a policy names it", () => {
     const policy = {
-      disabled: ["tool_list", "run_code", "read"],
+      disabled: ["run_code", "read"],
       groups: [{ name: "all", patterns: ["*"] }],
     };
-    assert.deepEqual(denyNames(policy, ["read", "tool_list", "run_code", "write"], new Set()), [
-      "read",
-      "write",
-    ]);
-  });
-
-  it("hides globally registered tool_list when a preset has no active groups", () => {
-    assert.deepEqual(denyNames(
-      { disabled: [], groups: [] },
-      ["read", "tool_list", "write"],
-      new Set(),
-    ), ["tool_list"]);
-    assert.deepEqual(denyNames(
-      { disabled: [], groups: [{ name: "empty", patterns: ["gone"] }] },
-      ["read", "tool_list", "write"],
-      new Set(),
-    ), ["tool_list"]);
+    assert.deepEqual(denyNames(policy, ["read", "run_code", "write"]), ["read"]);
   });
 
   it("keeps empty groups visible as invalid configuration", () => {
@@ -117,41 +90,7 @@ describe("tool-manager policy", () => {
     });
   });
 
-  it("marks opened groups without listing tools", () => {
-    const groups = [{
-      name: "GitHub MCP",
-      description: "GitHub tools",
-      patterns: ["mcp__*"],
-      tools: Array.from({ length: 30 }, (_, i) => `mcp__s__t${i}`),
-    }];
-    const listed = listGroupViews(groups, new Set(["GitHub MCP"]));
-    assert.equal(listed.length, 1);
-    assert.equal(listed[0]?.name, "GitHub MCP");
-    assert.equal(listed[0]?.description, "GitHub tools");
-    assert.equal(listed[0]?.exposed, true);
-  });
-
-  it("resolves only non-empty active groups and excludes discovery transports", () => {
-    const policy = {
-      disabled: [],
-      groups: [
-        { name: "all", patterns: ["*"] },
-        { name: "empty", patterns: ["gone"] },
-      ],
-    };
-    assert.deepEqual(resolveActiveGroups(
-      policy,
-      ["read", "tool_list", "run_code"],
-    ).map((group) => ({ name: group.name, tools: group.tools })), [
-      { name: "all", tools: ["read"] },
-    ]);
-    assert.deepEqual(resolveActiveGroups(
-      { disabled: ["read"], groups: [{ name: "disabled only", patterns: ["read"] }] },
-      ["read", "tool_list"],
-    ), []);
-  });
-
-  it("assigns overlapping tools to the first group and reports policy conflicts", () => {
+  it("resolves every non-empty group and reports policy conflicts", () => {
     const policy = {
       disabled: ["web_fetch"],
       groups: [
@@ -160,9 +99,11 @@ describe("tool-manager policy", () => {
         { name: "Fetch", patterns: ["web_fetch"] },
       ],
     };
-    assert.deepEqual(resolveActiveGroups(policy, ["web_search", "web_fetch"])
+    assert.deepEqual(resolveGroups(policy, ["web_search", "web_fetch"])
       .map((group) => ({ name: group.name, tools: group.tools })), [
-      { name: "Web", tools: ["web_search"] },
+      { name: "Web", tools: ["web_search", "web_fetch"] },
+      { name: "Search", tools: ["web_search"] },
+      { name: "Fetch", tools: ["web_fetch"] },
     ]);
     assert.deepEqual(groupPolicyIssues(policy, ["web_search", "web_fetch"]), {
       emptyGroups: [],
@@ -184,7 +125,6 @@ describe("tool-manager policy", () => {
       disabledMembers: [],
       duplicateMembers: [],
     });
-    assert.deepEqual(resolveActiveGroups(offPolicy, ["web_search", "web_fetch"]), []);
     assert.deepEqual(policyOrphans(offPolicy, ["web_search", "web_fetch"]).emptyGroups, []);
     // 组内只剩一个工具被关闭时仍然是非法配置（整体启用或整体关闭）
     const partialPolicy = {
@@ -194,12 +134,6 @@ describe("tool-manager policy", () => {
     assert.deepEqual(groupPolicyIssues(partialPolicy, ["web_search", "web_fetch"]).disabledMembers, [
       { tool: "web_fetch", groups: ["Web"] },
     ]);
-  });
-
-  it("finds a group by name case-insensitively", () => {
-    const groups = [{ name: "GitHub MCP", patterns: [], tools: ["mcp__a"] }];
-    assert.equal(findGroup(groups, " github mcp ")?.name, "GitHub MCP");
-    assert.equal(findGroup(groups, "other"), undefined);
   });
 
   it("normalizes group names without truncating or ascii-slugifying", () => {

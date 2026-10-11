@@ -18,10 +18,10 @@ describe("tool-manager catalog stats", () => {
       totalTools: 5,
       groupCount: 3,
       ungroupedTools: 2,
-      onDemandTools: 2,
+      groupedTools: 2,
       disabledTools: 1,
     });
-    assert.equal(stats.ungroupedTools + stats.onDemandTools + stats.disabledTools, stats.totalTools);
+    assert.equal(stats.ungroupedTools + stats.groupedTools + stats.disabledTools, stats.totalTools);
   });
 
   it("counts disabled before grouped", () => {
@@ -32,7 +32,7 @@ describe("tool-manager catalog stats", () => {
       totalTools: 5,
       groupCount: 1,
       ungroupedTools: 3,
-      onDemandTools: 1,
+      groupedTools: 1,
       disabledTools: 1,
     });
   });
@@ -45,7 +45,7 @@ describe("tool-manager catalog stats", () => {
       totalTools: 0,
       groupCount: 1,
       ungroupedTools: 0,
-      onDemandTools: 0,
+      groupedTools: 0,
       disabledTools: 0,
     });
   });

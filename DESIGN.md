@@ -1,5 +1,7 @@
 # DSH Tool Manager 可行性研究与架构设计
 
+> **状态（当前分支）：按需（on-demand）曝光链路已整体移除。** 第 2.3 / 2.4 / 3.2 / 3.3 节与路线图中所有 `tool_list`、按需组曝光、会话曝光恢复的内容记录的是 1.x 的设计与实测结论，仅作历史与 DSH 事实参考。当前语义：**分组只是人类的一键批量启停开关，永不改变模型可见面**；只有「弃用」（写进该 Preset 的 `disabled`）才会让工具从 schema、lookup 与 dispatch 同时消失。插件现在注册 0 个模型工具，只在 Agent scope 应用 `restrict({ deny })` 与 `system-prompt/assemble` 过滤，不再有 `tool_list`、目录消息、会话曝光历史与 `agent/pre-step` 钩子。
+
 ## 1. 结论
 
 **可以实现，而且 DSH 现有工具 registry 已提供关键基础能力。**
@@ -9,7 +11,7 @@
 1. **能力治理 / 上下文治理（本插件可完成）**
    - 某工具是否出现在模型请求的 tool schemas 中；
    - 某工具是否能被该 Agent dispatch；
-   - 一组工具是否只通过 `tool_list` 被发现，打开后在当前会话一直可用。
+   - 一组工具能否被一键批量启用或弃用（只影响 schema、lookup 与 dispatch，不引入任何 AI 侧发现机制）。
 2. **资源生命周期治理（不能仅靠 registry filter 完成）**
    - MCP server 子进程/HTTP connection 是否启动；
    - 某个 Cordis 插件 row 是否装载；
@@ -42,21 +44,23 @@ mcp__<serverName>__<rawToolName>
 
 本次研究用动态 Cordis probe 实测：选择一个当前可见工具，施加 `deny` 后 `schemas(agent)` 中立刻消失，dispose 后立刻恢复。
 
-### 2.3 每个模型 step 都重新组装工具目录
+### 2.3（历史）每个模型 step 都重新组装工具目录
+
+> 已移除：本节关于 `tool_list` 与按需曝光的结论不再适用；以下描述的是 DSH 的 assemble 时机事实，仍然成立。
 
 Agent loop 在 `preStep()` 中**先** `systemPrompt.assemble()`，**再**跑 `agent/pre-step` waterfall。因此：
 
-- `tool_list` 在 step N 执行并修改 restriction 后，step N+1 的 assemble 可以看到新 schema；
-- 组一旦打开就保持到当前 Agent 结束或策略把该组删掉，不再按模型步数收回。
+- （已移除）`tool_list` 在 step N 执行并修改 restriction 后，step N+1 的 assemble 可以看到新 schema；
+- （已移除）组一旦打开就保持到当前 Agent 结束或策略把该组删掉，不再按模型步数收回。
 
 ### 2.4 Preset 是 standing scope，不是每 Session 一套插件实例
 
 一个 Preset composition 被 standing mount 一次，多个 Agent 通过 scope parent 加入。因此：
 
 - **静态 preset 规则**可以放在 standing scope；
-- **按会话临时曝光状态**必须应用在 Agent 自己的 scope；
-- `tool_list` 注册在 host 全局层（否则 PTC 生成 SDK 看不到），每个 live Agent 只维护该会话的打开状态，避免同 Preset 会话互相解锁；
-- Agent 安装时从该 Session 的持久事件日志恢复成功的 `tool_list` 调用，因此重启 DSH 并恢复同一 Session 后仍保持开放。原生调用通过成功配对的 `tool/call` + `tool/result` 恢复，PTC 调用通过成功的 `tool/ptc-dispatch` 恢复；fork 时跳过 `inheritedEventCount` 前缀，避免把父 Session 的临时开放状态带入子 Session。
+- **按 Agent 的策略**必须应用在 Agent 自己的 scope；
+- （已移除）`tool_list` 曾注册在 host 全局层（否则 PTC 生成 SDK 看不到），每个 live Agent 只维护该会话的打开状态；
+- （已移除）Agent 安装时曾从该 Session 的持久事件日志恢复成功的 `tool_list` 调用（原生走 `tool/call` + `tool/result`，PTC 走 `tool/ptc-dispatch`；fork 跳过 `inheritedEventCount` 前缀）。
 
 ### 2.5 Preset inventory 已有只读基础，但没有写 API
 
@@ -80,7 +84,7 @@ Web Settings page ─────▶│ tool-manager.json        │
 │ standing scope    │       │ one state per Agent    │
 └────────┬─────────┘       └───────┬───────────────┘
          │ inherited tools          │ agent.ctx.tools.restrict()
-         ▼                          │ + global tool_list
+         ▼                          │ (插件不再注册模型工具)
 ┌──────────────────┐                ▼
 │ ToolRuntime       │◀──────── per-step visibility
 │ native/plugin/MCP │
@@ -107,24 +111,19 @@ interface ToolManagerSettings {
 从高到低：
 
 1. DSH 其他安全 restriction / guard；
-2. 本插件 `disabled`；
-3. 按需组默认隐藏；
-4. `tool_list(group)` 打开该组（当前会话一直可用）；
-5. 原始 Preset 工具目录。
+2. 本插件 `disabled`（分组只是对这一项的批量写入）；
+3. 原始 Preset 工具目录。
 
-显式 disabled 永远不能被临时曝光反向开启。PTC 的 `run_code` 永远不会进入 deny 集合。`tool_list` 注册在 host 全局层；没有按需组的 Preset 会把它 deny 掉。
+显式 `disabled` 是唯一的隐藏手段。PTC 的 `run_code` 永远不会进入 deny 集合（传输层保留名）。插件不再注册任何模型工具，因此也没有需要 deny 掉的发现工具。
 
-### 3.3 `tool_list` 语义
+### 3.3（已移除）1.x 的 `tool_list` 语义
 
-- `tool_list({ group: "GitHub MCP" })`：按名称打开该组，该组全部工具立刻可用，直到当前 Agent 结束或该组被删掉；
-- 每个 Agent 独立应用打开状态，不跨会话共享；成功调用由 Session 事件日志持久记录，同一 Session 重启恢复时重建状态；
-- `tool_list` 注册在 host 全局层，这样 PTC 生成 SDK 能绑定它；没有按需组的 Preset 用 restriction 隐藏；
-- PTC 模式应在 `run_code` 内调用 `await tools.tool_list({ group })`；
-- 按需组说明不走 `systemPrompt.section`。所有 Preset（含极简模式的 `complete: true` persona）都在 `agent/pre-step` 写入一条 skill 式的持久 user 角色 `<system-reminder>` 目录；目录为每组列出实际工具数量和完整工具名；
-- 只有至少匹配一个当前真实且未被显式关闭工具的组才是有效组。空组或仅含关闭工具的组不进入目录、不能通过 `tool_list` 打开，且当某 Preset 没有有效组时会隐藏 `tool_list`；
-- 工具状态互斥：一个工具只能是常开、已关闭，或属于一个按需组。WebUI 不提供已关闭或被其他组占用的工具；Host 保存接口拒绝关闭工具入组和跨组重复；
-- 旧 wildcard 配置在编辑时投影为当前实际成员的精确工具名。运行时对尚未修复的重叠配置按组顺序 first-match，确保目录中一个工具最多出现一次；
-- WebUI 和 Host 保存接口都禁止保存空组。旧配置中的空组或冲突组仍会在设置页中标为无效，供用户修复或删除；
+（以下为 1.x 的历史实现，已随按需链路整体删除）`tool_list({ group })` 按名称打开该组并保持到 Agent 结束；每个 Agent 独立、不跨会话共享；注册在 host 全局层以便 PTC 生成 SDK 绑定；目录通过 `agent/pre-step` 写入一条持久 user 角色的 `<system-reminder>`；空组或仅含关闭成员的组不进入目录；旧 wildcard 配置在编辑时投影为当前实际成员的精确工具名，运行时对遗留重叠配置按组顺序 first-match。
+
+仍然成立的约定：
+
+- 工具状态互斥：一个工具要么独立启用/弃用，要么属于一个分组。WebUI 不提供属于其他分组的工具；Host 保存接口拒绝跨组重复；
+- 整组成员全部弃用是合法的整体关闭状态，不再被报成“已关闭工具入组”；匹配不到任何工具的组仍是空组错误；
 - 保存校验与设置页必须读**同一份**工具目录：standing composition 与 Agent 作用域注册（探针 + 运行中 Agent 观测）的并集。只读 standing 会把 `@deepseek-ai/dsh-schedule` 注入每个 root Agent 的 `schedule_*`、以及 `modelSelectionSettings` 注入的 `subagent` 判成不存在，从而拒绝一个页面能列出、运行时也能正常打开的组。只有真正读不到 standing composition 时才跳过该校验。
 
 ## 4. 关键实现陷阱
@@ -148,21 +147,20 @@ interface ToolManagerSettings {
 
 它会拒绝 unknown、scope-local 和 reserved transport 名。实现必须：
 
-- 在 host/global 层注册 `tool_list`（与 `skill` 一样进入 PTC SDK 的继承面），再 snapshot inherited baseline，并排除 `tool_list` / `run_code`；
-- 没有按需组的 Preset 用 `restrict({ deny: ['tool_list'] })` 隐藏它，避免无关会话看到空的 discovery 工具；
+- 在 Agent 安装时 snapshot inherited baseline（排除传输层保留名 `run_code`），再构造 deny；
 - 只对 baseline 中真实存在的名字构造 deny；
 - 监听 `tools/change`：先暂时卸下 restriction 再重读 baseline，避免把已隐藏的工具当成“已消失”；刷新期间抑制重入，防止自己的 restrict/register 再次触发刷新；
 - 若仍撞上 unknown-name 错误，从诊断文本解析 `known global tools` 后重试交集。
 
 ### 4.4 PTC 模式需单独定义产品语义
 
-PTC 模式模型表面只见 `run_code`，但生成 SDK 仍包含所有可见 end-capability tools。restriction 仍有效，也会缩小 SDK。`tool_list` 必须注册在 host/global 层，才能进入 PTC 的继承面并成为 SDK binding；按 Agent 的 scope-local 注册对 `schemas(agent)` 可见，但不会稳定出现在 PTC 系统提示的 SDK 里。模型应在 `run_code` 内调用 `await tools.tool_list({ group })`。若希望 PTC 模式也把 `tool_list` 作为原生 discovery tool 与 `run_code` 并列，需要 DSH 为 mixed presentation 提供更细粒度机制。
+PTC 模式模型表面只见 `run_code`，但生成 SDK 仍包含所有可见 end-capability tools。restriction 仍有效，也会缩小 SDK。（已移除）1.x 曾把 `tool_list` 注册在 host/global 层，以便进入 PTC 的继承面并成为 SDK binding；当前插件不注册任何模型工具，PTC 会话看到的 SDK 就是继承面里未被 `disabled` 的那些工具。
 
 ### 4.5 Prompt guidance 可能残留
 
 DSH 内置文件/Web 等工具 guidance 会通过 `ctx.tools.get(name, scope)` 判断可见性，所以 restriction 后说明会消失。第三方插件若无条件注册 guidance，schema 虽隐藏但文字可能仍占上下文；平台层可未来引入“tool-owned guidance metadata”，或要求第三方遵循条件渲染约定。
 
-极简模式 persona 配了 `complete: true`：`assemble()` 的 waterfall 仍会跑，但随后把 complete 段恢复成唯一系统提示，其它 `systemPrompt.section` 全部丢掉。本插件因此不往系统提示里写组名单，而是对齐 `dsh-tool-skill`：在 `agent/pre-step` 追加一条 `source.kind = tool-manager-catalog` 的持久 user 消息。每条 entry 保存组名、描述和实际工具名；digest 也覆盖这三项，因此成员变化会触发替换目录。可见目录未变则不重发；有效组被删光或变空且曾经发过则追加清空目录。`tool_list` 是全局一份 schema，description 不带组名；当前会话可用的组名和成员只出现在这条 catalog 里。旧消息缺少工具名字段时按空列表读取，以兼容升级前会话历史。
+（已移除，仅作历史记录）极简模式 persona 配了 `complete: true`：`assemble()` 的 waterfall 仍会跑，但随后把 complete 段恢复成唯一系统提示，其它 `systemPrompt.section` 全部丢掉。本插件因此不往系统提示里写组名单，而是对齐 `dsh-tool-skill`：在 `agent/pre-step` 追加一条 `source.kind = tool-manager-catalog` 的持久 user 消息。每条 entry 保存组名、描述和实际工具名；digest 也覆盖这三项，因此成员变化会触发替换目录。可见目录未变则不重发；有效组被删光或变空且曾经发过则追加清空目录。`tool_list` 是全局一份 schema，description 不带组名；当前会话可用的组名和成员只出现在这条 catalog 里。旧消息缺少工具名字段时按空列表读取，以兼容升级前会话历史。
 
 ## 5. WebUI 与持久化选择
 
@@ -173,7 +171,7 @@ DSH 内置文件/Web 等工具 guidance 会通过 `ctx.tools.get(name, scope)` �
 - 同源 HTTP endpoint 提供 snapshot/save；
 - 保存携带文件存储 revision，拒绝 stale write，并以临时文件原子替换；
 - WebUI 不直接编辑 `agent.cordis.yml`，因此绝不会损坏 shipped preset；
-- 设置页支持搜索、常开/按需/关闭筛选、组内筛选勾选、以及 orphan disable 清理。
+- 设置页支持搜索、启用/弃用筛选、整组开关、拖拽排序（分组 + 组内）、记住上次 Preset，以及 orphan disable 清理。
 
 生产版仍可：
 
@@ -212,8 +210,7 @@ DSH 内置文件/Web 等工具 guidance 会通过 `ctx.tools.get(name, scope)` �
 
 - WebUI 能列出所有 Preset 及各自实际工具 schema；
 - 关闭工具后，live Agent 下一 step 不再看到也不能调用它；
-- 按需组工具默认不进入模型 schema；
-- `tool_list` 能列组并打开目标组；
+- （已移除）1.x 的按需组曝光与 `tool_list` 目录；
 - 打开仅影响当前 Agent，该会话内一直可用；
 - MCP 工具可用 `mcp__server__*` 分组；
 - settings 在重启后保留；
@@ -225,7 +222,7 @@ DSH 内置文件/Web 等工具 guidance 会通过 `ctx.tools.get(name, scope)` �
 
 1. 监听 `tools/change`，MCP 动态 tools/list 或插件 HMR 后刷新每个 Agent baseline；
 2. 设置页提示并一键清除 orphan disable；旧配置中的空组在草稿中标记为无效，必须补选工具或删除后才能保存；
-3. `tool_list` 支持 `query`，大组只返回 preview + 截断列表；
+3. （已移除）`tool_list` 的 `query` 与 preview 截断列表；
 4. 打开后的组在当前会话一直可用，重启恢复同一 Session 时从成功的原生/PTC 工具事件重建；fork 不继承父 Session 的开放状态；策略更新不取消正在执行的工具；
 5. 自动命名和自动分组在执行前显示确认框，并允许配置 5–600 秒请求超时（默认 60/120 秒）；Host 校验范围，超时及供应商中止会返回明确错误。
 

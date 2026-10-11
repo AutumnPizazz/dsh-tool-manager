@@ -14,7 +14,6 @@ import { groupPolicyIssues, matchesAnyPattern, normalizeSettings, policyFor } fr
 import { ToolPolicyRuntime } from "./runtime.js";
 import { buildSnapshot, mergeSchemas } from "./snapshot.js";
 import {
-  DISCOVERY_TOOL_NAME,
   PTC_TRANSPORT_NAME,
   TOOL_MANAGER_PROBE_SESSION_ID,
 } from "./types.js";
@@ -330,13 +329,12 @@ export function apply(ctx: unknown): void {
     tools: () => tools,
     probe: (presetId) => probe.inspect(presetId),
     explainedLoss: (presetId, toolName) => {
-      // This plugin's own tools, plus every name its policy hides on purpose:
-      // a group that closed or a tool the user disabled is not a lost
-      // registration, and reporting it would be a false alarm.
-      if (toolName === DISCOVERY_TOOL_NAME || toolName === PTC_TRANSPORT_NAME) return true;
+      // This plugin's own PTC transport, plus every name its policy hides on
+      // purpose: a tool the user disabled is not a lost registration, and
+      // reporting it would be a false alarm.
+      if (toolName === PTC_TRANSPORT_NAME) return true;
       const policy = policyFor(config.get(), presetId);
-      if (policy.disabled.includes(toolName)) return true;
-      return policy.groups.some((group) => matchesAnyPattern(toolName, group.patterns));
+      return policy.disabled.includes(toolName);
     },
     excludeAgentId: TOOL_MANAGER_PROBE_SESSION_ID,
     warn: (message) => warn(context, message),
@@ -387,7 +385,7 @@ export function apply(ctx: unknown): void {
           await defaultPreset.ensure();
           const standing = await schemasForPreset(presets, tools, presetId);
           const schemas = mergeSchemas(standing, await catalog.schemasFor(presetId))
-            .filter((schema) => schema.name !== DISCOVERY_TOOL_NAME && schema.name !== PTC_TRANSPORT_NAME);
+            .filter((schema) => schema.name !== PTC_TRANSPORT_NAME);
           const selected = selectSuggestionTools(schemas, body?.toolNames);
           const otherGroupNames = normalizeGroupNames(body?.otherGroupNames);
           const timeoutMs = body?.timeoutMs === undefined
@@ -425,7 +423,7 @@ export function apply(ctx: unknown): void {
           await defaultPreset.ensure();
           const standing = await schemasForPreset(presets, tools, presetId);
           const schemas = mergeSchemas(standing, await catalog.schemasFor(presetId))
-            .filter((schema) => schema.name !== DISCOVERY_TOOL_NAME && schema.name !== PTC_TRANSPORT_NAME);
+            .filter((schema) => schema.name !== PTC_TRANSPORT_NAME);
           const selected = selectSuggestionTools(schemas, body?.toolNames);
           const otherGroupNames = normalizeGroupNames(body?.otherGroupNames);
           const timeoutMs = body?.timeoutMs === undefined

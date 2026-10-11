@@ -5,7 +5,7 @@ export interface ToolCatalogStats {
   totalTools: number;
   groupCount: number;
   ungroupedTools: number;
-  onDemandTools: number;
+  groupedTools: number;
   disabledTools: number;
 }
 
@@ -22,11 +22,11 @@ export function toolCatalogStats(
   }
 
   let ungroupedTools = 0;
-  let onDemandTools = 0;
+  let groupedTools = 0;
   let disabledTools = 0;
   for (const tool of tools) {
     if (disabled.has(tool.name)) disabledTools += 1;
-    else if (grouped.has(tool.name)) onDemandTools += 1;
+    else if (grouped.has(tool.name)) groupedTools += 1;
     else ungroupedTools += 1;
   }
 
@@ -34,7 +34,7 @@ export function toolCatalogStats(
     totalTools: tools.length,
     groupCount: policy.groups.length,
     ungroupedTools,
-    onDemandTools,
+    groupedTools,
     disabledTools,
   };
 }

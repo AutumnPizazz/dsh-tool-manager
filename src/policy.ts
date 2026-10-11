@@ -1,11 +1,9 @@
 import {
-  DISCOVERY_TOOL_NAME,
   PTC_TRANSPORT_NAME,
   type PresetOrphans,
   type PresetToolPolicy,
   type ResolvedGroupView,
   type ToolGroupPolicy,
-  type ToolListGroupView,
   type ToolManagerSettings,
 } from "./types.js";
 
@@ -81,22 +79,6 @@ export interface GroupPolicyIssues {
   duplicateMembers: GroupConflict[];
 }
 
-export function resolveActiveGroups(
-  policy: PresetToolPolicy,
-  toolNames: readonly string[],
-): ResolvedGroupView[] {
-  const disabled = new Set(policy.disabled);
-  const claimed = new Set<string>();
-  const active: ResolvedGroupView[] = [];
-  for (const group of resolveGroups(policy, toolNames)) {
-    const tools = group.tools.filter((name) => !disabled.has(name) && !claimed.has(name));
-    if (tools.length === 0) continue;
-    for (const name of tools) claimed.add(name);
-    active.push({ ...group, tools });
-  }
-  return active;
-}
-
 export function groupPolicyIssues(
   policy: PresetToolPolicy,
   toolNames: readonly string[],
@@ -135,40 +117,25 @@ export function hiddenTools(
   const hidden = new Set<string>();
   for (const name of toolNames) {
     if (policy.disabled.includes(name)) hidden.add(name);
-    if (policy.groups.some((group) => matchesAnyPattern(name, group.patterns))) {
-      hidden.add(name);
-    }
   }
   return hidden;
 }
 
 /**
  * Names `tools.restrict({ deny })` may legally receive for the current
- * inherited baseline: grouped tools that are not currently exposed, plus
- * every explicit disable. The PTC transport is never denied. `tool_list` is
- * registered globally so PTC's SDK can bind it. Presets with no active
- * (non-empty) on-demand groups hide it here so restrict() can deny the inherited name.
+ * inherited baseline: every explicit disable. The PTC transport is never
+ * denied. Groups never hide anything — they exist only so the settings page
+ * can enable or disable a whole bundle of tools in one click.
  */
 export function denyNames(
   policy: PresetToolPolicy,
   toolNames: readonly string[],
-  exposures: ReadonlySet<string>,
 ): string[] {
-  const groups = resolveActiveGroups(policy, toolNames);
   const hidden = new Set<string>();
-  const open = new Set([...exposures].map((name) => name.toLowerCase()));
-
-  for (const group of groups) {
-    if (open.has(group.name.toLowerCase())) continue;
-    for (const name of group.tools) hidden.add(name);
-  }
   for (const name of policy.disabled) {
     if (toolNames.includes(name)) hidden.add(name);
   }
-
   hidden.delete(PTC_TRANSPORT_NAME);
-  if (groups.length > 0) hidden.delete(DISCOVERY_TOOL_NAME);
-  else if (toolNames.includes(DISCOVERY_TOOL_NAME)) hidden.add(DISCOVERY_TOOL_NAME);
   return toolNames.filter((name) => hidden.has(name));
 }
 
@@ -190,33 +157,12 @@ export function policyOrphans(
   };
 }
 
-export function listGroupViews(
-  groups: readonly ResolvedGroupView[],
-  exposures: ReadonlySet<string>,
-): ToolListGroupView[] {
-  const open = new Set([...exposures].map((name) => name.toLowerCase()));
-  return groups.map((group) => ({
-    name: group.name,
-    ...(group.description ? { description: group.description } : {}),
-    exposed: open.has(group.name.toLowerCase()),
-  }));
-}
-
-export function findGroup(
-  groups: readonly ResolvedGroupView[],
-  requested: string,
-): ResolvedGroupView | undefined {
-  const needle = requested.trim().toLowerCase();
-  if (!needle) return undefined;
-  return groups.find((group) => group.name.toLowerCase() === needle);
-}
-
 export function matchesAnyPattern(value: string, patterns: readonly string[]): boolean {
   return patterns.some((pattern) => matchesPattern(value, pattern));
 }
 
 function isGroupableTool(name: string): boolean {
-  return name !== DISCOVERY_TOOL_NAME && name !== PTC_TRANSPORT_NAME;
+  return name !== PTC_TRANSPORT_NAME;
 }
 
 export function matchesPattern(value: string, pattern: string): boolean {

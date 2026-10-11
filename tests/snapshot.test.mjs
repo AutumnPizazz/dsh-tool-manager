@@ -36,7 +36,7 @@ describe("snapshot schema merging", () => {
     const tools = {
       schemas(key) {
         assert.equal(key, "standing-standard");
-        return [schema("read"), schema("tool_list"), schema("run_code")];
+        return [schema("read"), schema("run_code")];
       },
     };
 
