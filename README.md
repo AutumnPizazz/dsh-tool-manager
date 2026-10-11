@@ -1,5 +1,10 @@
 # DSH 工具管理插件
 
+> **这是一份个人 fork。** 上游项目：[pan17/dsh-tool-manager](https://github.com/pan17/dsh-tool-manager)（MIT）。
+> 本 fork 由 [AutumnPizazz](https://github.com/AutumnPizazz) 维护，以 `@autumnpizazz/dsh-tool-manager` 发布，
+> 用于在两台机器之间同步自己使用的版本；功能与上游一致，差异见 [CHANGELOG](CHANGELOG.md)。
+
+
 一个简单好用的 DeepSeek Harness（DSH）工具管理插件。
 
 **适配 DSH `>=0.2.0-rc.2`。** 旧版本请继续使用 `1.2.8`。

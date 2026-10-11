@@ -3,6 +3,13 @@
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.2.11] - 2026-10-12
+
+### Changed
+
+- 以 scoped 名 `@autumnpizazz/dsh-tool-manager` 发布（个人 fork 的同步用包），`repository`/`homepage`/`bugs` 指向 fork；
+  代码与本仓库 `1.2.10` 之后的分支状态一致，仅发布元数据变化。
+
 ## [Unreleased]
 
 ### Added
